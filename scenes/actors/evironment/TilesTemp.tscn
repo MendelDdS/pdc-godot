@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://doiaadovrmbxh"]
+
+[ext_resource type="PackedScene" uid="uid://3we3xbprq787" path="res://scenes/actors/evironment/floor_tile.tscn" id="2_o3i7m"]
+
+[node name="TilesTemp" type="Node3D" unique_id=441258021]
+
+[node name="FloorTile" parent="." unique_id=903336515 instance=ExtResource("2_o3i7m")]

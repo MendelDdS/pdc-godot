@@ -1,0 +1,17 @@
+[gd_scene format=3 uid="uid://bqf3g8sdhojh0"]
+
+[ext_resource type="PackedScene" uid="uid://b3yxp8nmtcyi" path="res://scenes/components/health_component.tscn" id="1_g3nra"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_gejs6"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_tiqlc"]
+
+[node name="Enemy" type="CharacterBody3D" unique_id=996212000]
+
+[node name="HealthComponent" parent="." unique_id=1503925823 instance=ExtResource("1_g3nra")]
+
+[node name="EnemyBody" type="MeshInstance3D" parent="." unique_id=1524263456]
+mesh = SubResource("CapsuleMesh_gejs6")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1120864563]
+shape = SubResource("CapsuleShape3D_tiqlc")

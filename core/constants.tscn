@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://b1iofloryl7vp"]
+
+[ext_resource type="Script" uid="uid://cjssq62c3uq8x" path="res://core/constants.gd" id="1_pevsc"]
+
+[node name="Constants" type="Node" unique_id=1477987791]
+script = ExtResource("1_pevsc")

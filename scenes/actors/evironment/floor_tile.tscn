@@ -1,0 +1,21 @@
+[gd_scene format=3 uid="uid://3we3xbprq787"]
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_3frg0"]
+size = Vector2(5, 5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cmrk7"]
+albedo_color = Color(0.7, 0.5005, 0.035000008, 1)
+
+[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_3frg0"]
+data = PackedVector3Array(2.5, 0, 2.5, -2.5, 0, 2.5, 2.5, 0, -2.5, -2.5, 0, 2.5, -2.5, 0, -2.5, 2.5, 0, -2.5)
+
+[node name="FloorTile" type="Node3D" unique_id=903336515]
+
+[node name="FloorMesh" type="MeshInstance3D" parent="." unique_id=1798509494]
+mesh = SubResource("PlaneMesh_3frg0")
+surface_material_override/0 = SubResource("StandardMaterial3D_cmrk7")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="FloorMesh" unique_id=757422112]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="FloorMesh/StaticBody3D" unique_id=923730808]
+shape = SubResource("ConcavePolygonShape3D_3frg0")

@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://cxphvpj3hiwcl"]
+
+[ext_resource type="Script" uid="uid://dd5jasbr0a4gu" path="res://scenes/main.gd" id="1_o5qli"]
+[ext_resource type="PackedScene" uid="uid://yfpeitfy0lmy" path="res://scenes/actors/player/player.tscn" id="2_0wfyh"]
+
+[node name="Main" type="Node" unique_id=398235837]
+script = ExtResource("1_o5qli")
+
+[node name="Player" parent="." unique_id=2122427803 instance=ExtResource("2_0wfyh")]
+
+[node name="LevelContainer" type="Node3D" parent="." unique_id=1605950127]

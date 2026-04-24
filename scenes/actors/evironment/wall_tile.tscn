@@ -1,0 +1,21 @@
+[gd_scene format=3 uid="uid://rjbfv8oxwh05"]
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_wmlow"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2sx2q"]
+albedo_color = Color(1, 0.33333337, 0, 1)
+
+[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_wmlow"]
+data = PackedVector3Array(1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, 1, -1, 0, -1, 1, 0, -1)
+
+[node name="WallTile" type="Node3D" unique_id=1673927912]
+
+[node name="WallMesh" type="MeshInstance3D" parent="." unique_id=1958557764]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 1, 1)
+mesh = SubResource("PlaneMesh_wmlow")
+surface_material_override/0 = SubResource("StandardMaterial3D_2sx2q")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="WallMesh" unique_id=731405233]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="WallMesh/StaticBody3D" unique_id=1210955252]
+shape = SubResource("ConcavePolygonShape3D_wmlow")
