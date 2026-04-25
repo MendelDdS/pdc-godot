@@ -6,3 +6,5 @@
 script = ExtResource("1_scdyt")
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1419696167]
+
+[node name="WeaponPivot" type="Node3D" parent="Camera3D" unique_id=123456789]

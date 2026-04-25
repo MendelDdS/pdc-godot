@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://b5n58tyyl7b0x" path="res://scenes/actors/player/player.gd" id="1_1fipg"]
 [ext_resource type="PackedScene" uid="uid://b3yxp8nmtcyi" path="res://scenes/components/health_component.tscn" id="2_6b2fh"]
+[ext_resource type="PackedScene" uid="uid://eent4xi3008p" path="res://scenes/ui/combat_ui.tscn" id="2_combat"]
 [ext_resource type="PackedScene" uid="uid://t4el21g5ilqe" path="res://scenes/camera/CameraPivot.tscn" id="2_oj104"]
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_l17oj"]
@@ -42,3 +43,5 @@ target_position = Vector3(0, 0, 2)
 [node name="RightRay" type="RayCast3D" parent="." unique_id=421685770]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 1, 0)
 target_position = Vector3(0, 0, -2)
+
+[node name="CombatUI" parent="." unique_id=813536664 instance=ExtResource("2_combat")]
