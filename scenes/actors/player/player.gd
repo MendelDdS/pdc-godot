@@ -7,8 +7,11 @@ const ROTATE_DURATION: float = 0.3
 const HEAD_BOB_FREQ: float = 8.0
 const HEAD_BOB_AMP: float = 0.08
 const TILT_AMOUNT: float = 2.5 # Graus
-const STANCE_TRANSITION_DURATION: float = 0.24
+const STANCE_TRANSITION_DURATION: float = 0.22
 const STANCE_ROTATE_SPEED: float = 12.0
+const STANCE_ARC_HEIGHT: float = 0.28
+const BOTTOM_CROSS_TRANSITION_DURATION: float = 0.45
+const BOTTOM_CROSS_ARC_HEIGHT: float = 0.85
 
 # Configurações de Combate
 const SWORD_SCENE = preload("res://scenes/actors/items/simple_sword.tscn")
@@ -52,6 +55,14 @@ var target_stance_rot: Vector3 = STANCES[0]["rot"]
 var is_attacking: bool = false
 var is_defending: bool = false
 var can_attack: bool = true
+var stance_transitioning: bool = false
+var stance_from_index: int = 0
+var stance_to_index: int = 0
+var stance_origin_pos: Vector3 = Vector3.ZERO
+var stance_origin_quat: Quaternion = Quaternion.IDENTITY
+var stance_actual_start_pos: Vector3 = Vector3.ZERO
+var stance_actual_start_quat: Quaternion = Quaternion.IDENTITY
+var stance_transition_elapsed: float = 0.0
 
 # endregion
 
@@ -100,20 +111,50 @@ func update_weapon_stance(delta: float) -> void:
 	if is_attacking:
 		return
 		
-	var target_pos = target_stance_pos
-	var target_rot = target_stance_rot
+	# 1. Determinar Alvos Base (Defesa ou Postura Atual)
+	var base_target_pos := target_stance_pos
+	var base_target_quat := _degrees_to_quat(target_stance_rot)
 	
 	if is_defending:
-		target_pos = DEFENSE_STANCE["pos"]
-		target_rot = DEFENSE_STANCE["rot"]
+		base_target_pos = DEFENSE_STANCE["pos"]
+		base_target_quat = _degrees_to_quat(DEFENSE_STANCE["rot"])
 		
-	# Movimento linear de posição.
-	weapon_pivot.position = weapon_pivot.position.move_toward(target_pos, STANCE_TRANSITION_DURATION * 25.0 * delta)
-
-	# Rotação contínua, estável, sem flip 180/-180.
-	var stable_target_rot := _get_stable_target_rotation(weapon_pivot.rotation_degrees, target_rot)
-	var rot_weight := clampf(delta * STANCE_ROTATE_SPEED, 0.0, 1.0)
-	_set_weapon_rotation_quat_weight(rot_weight, weapon_pivot.rotation_degrees, stable_target_rot)
+	# 2. Processar Transição
+	if stance_transitioning:
+		var is_arc := _is_bottom_cross_transition(stance_from_index, stance_to_index) and not is_defending
+		var duration := BOTTOM_CROSS_TRANSITION_DURATION if is_arc else STANCE_TRANSITION_DURATION
+		stance_transition_elapsed += delta
+		var progress := clampf(stance_transition_elapsed / duration, 0.0, 1.0)
+		var eased_progress := _smooth_step(progress)
+		
+		# Transição em ARCO (Especial entre posições inferiores e NÃO defendendo)
+		if is_arc:
+			# Arco de Posição Estabilizado (usa origens fixas para o controle, mas interpola do ponto real)
+			var fixed_origin: Vector3 = STANCES[stance_from_index]["pos"]
+			var fixed_target: Vector3 = STANCES[stance_to_index]["pos"]
+			var control: Vector3 = (fixed_origin + fixed_target) * 0.5 + Vector3(0.0, BOTTOM_CROSS_ARC_HEIGHT, 0.0)
+			
+			weapon_pivot.position = _quadratic_bezier(stance_actual_start_pos, control, base_target_pos, eased_progress)
+			
+			# Rotação em Arco via SLERP duplo (atravessa a postura TOP como ponto médio)
+			# _slerp_short garante caminho curto e evita giro indesejado no eixo Y/Z
+			var mid_quat := _degrees_to_quat(STANCES[1]["rot"])
+			if eased_progress < 0.5:
+				weapon_pivot.quaternion = _slerp_short(stance_actual_start_quat, mid_quat, eased_progress * 2.0)
+			else:
+				weapon_pivot.quaternion = _slerp_short(mid_quat, base_target_quat, (eased_progress - 0.5) * 2.0)
+		else:
+			# Transição Linear (Normal ou Defesa)
+			weapon_pivot.position = stance_actual_start_pos.lerp(base_target_pos, eased_progress)
+			weapon_pivot.quaternion = stance_actual_start_quat.slerp(base_target_quat, eased_progress)
+			
+		if progress >= 1.0:
+			stance_transitioning = false
+	else:
+		# Estado Estático / Idle Follow
+		weapon_pivot.position = base_target_pos
+		var rot_weight := clampf(delta * STANCE_ROTATE_SPEED, 0.0, 1.0)
+		weapon_pivot.quaternion = weapon_pivot.quaternion.slerp(base_target_quat, rot_weight)
 
 func perform_attack() -> void:
 	if is_attacking or not can_attack:
@@ -131,68 +172,67 @@ func perform_attack() -> void:
 
 	# Força origem limpa do ataque para evitar bug em transição rápida.
 	var stance_origin_pos: Vector3 = STANCES[attack_from_stance]["pos"]
-	var stance_origin_rot: Vector3 = _normalize_degrees(STANCES[attack_from_stance]["rot"])
+	var stance_origin_quat: Quaternion = _degrees_to_quat(STANCES[attack_from_stance]["rot"])
 	weapon_pivot.position = stance_origin_pos
-	_set_weapon_rotation_quat_weight(1.0, weapon_pivot.rotation_degrees, stance_origin_rot)
+	weapon_pivot.quaternion = stance_origin_quat
 	
-	# Usa a pose atual real como origem para evitar "snap" quando a arma ainda está em transição.
+	# Usa a pose atual real como origem
 	var original_pos = weapon_pivot.position
-	var original_rot = _normalize_degrees(weapon_pivot.rotation_degrees)
+	var original_quat = weapon_pivot.quaternion
 	var final_pos = STANCES[next_stance]["pos"]
-	var final_rot = _normalize_degrees(STANCES[next_stance]["rot"])
+	var final_quat = _degrees_to_quat(STANCES[next_stance]["rot"])
 	
 	# 2. Calcular parâmetros de impacto
 	var is_thrust = (attack_from_stance == 0)
-	# Menos Z para cortes para evitar o efeito de "empurrar"; mais Z para estocada
 	var lunge_z = -2.5 if is_thrust else -0.7 
 	
 	var lerp_weight = 0.5 
 	var attack_pos = original_pos.lerp(final_pos, lerp_weight) + Vector3(0, 0, lunge_z)
-	var attack_rot = _normalize_degrees(_lerp_degrees(original_rot, final_rot, lerp_weight))
+	var attack_quat = original_quat.slerp(final_quat, lerp_weight)
 	
 	# Antecipação (Recuo antes do golpe)
 	var windup_lerp = 0.25
 	var windup_pos = original_pos.lerp(final_pos, windup_lerp) + Vector3(0, 0.05, 0.15)
-	var windup_rot = _normalize_degrees(_lerp_degrees(original_rot, final_rot, windup_lerp) + Vector3(8, 0, 0))
+	# Adiciona um pequeno "tilt" de recuo na rotação
+	var windup_tilt = Quaternion(Vector3(1, 0, 0), deg_to_rad(8.0))
+	var windup_quat = (original_quat.slerp(final_quat, windup_lerp)) * windup_tilt
 	
-	# Ajustes de peso baseados na postura inicial
+	# Ajustes de impacto baseados na postura inicial
 	var camera_kick_dir = Vector3.ZERO
 	match attack_from_stance:
-		1: # TOP -> Corte descendente pesado (O "Rasgo")
+		1: # TOP -> Corte descendente pesado
 			attack_pos.y -= 0.45
-			attack_rot.x -= 35
-			attack_rot.z += 20 # Inclina o gume da lâmina para o efeito de rasgo
+			var edge_tilt = Quaternion(Vector3(1, 0, 1), deg_to_rad(25.0))
+			attack_quat = attack_quat * edge_tilt
 			camera_kick_dir = Vector3(1.2, 0.2, 0)
 		2, 3: # RIGHT SIDES
-			attack_rot.z -= 15 # Inclina gume
+			var edge_tilt = Quaternion(Vector3(0, 0, 1), deg_to_rad(-15.0))
+			attack_quat = attack_quat * edge_tilt
 			camera_kick_dir = Vector3(0, 1, -0.5)
 		4, 5: # LEFT SIDES
-			attack_rot.z += 15 # Inclina gume
+			var edge_tilt = Quaternion(Vector3(0, 0, 1), deg_to_rad(15.0))
+			attack_quat = attack_quat * edge_tilt
 			camera_kick_dir = Vector3(0, -1, 0.5)
 		0: # CENTER -> Estocada
 			windup_pos = original_pos + Vector3(0, 0, 0.4)
 			attack_pos = original_pos + Vector3(0, 0, -2.5)
 			camera_kick_dir = Vector3(0.8, 0, 0)
 
-	# Segurança de trajetória:
-	# evita que a animação "puxe" a espada para o player quando STANCES/offsets mudam.
+	# Segurança de trajetória
 	var max_allowed_pullback_z: float = original_pos.z + 0.08
 	var min_required_lunge_z: float = original_pos.z - (2.5 if is_thrust else 0.35)
 	windup_pos.z = min(windup_pos.z, max_allowed_pullback_z)
 	attack_pos.z = min(attack_pos.z, min_required_lunge_z)
 	
-	attack_rot = _normalize_degrees(attack_rot)
-	windup_rot = _normalize_degrees(windup_rot)
-
 	weapon_attack_animator.play_attack(
 		original_pos,
-		_degrees_to_quat(original_rot),
+		original_quat,
 		windup_pos,
-		_degrees_to_quat(windup_rot),
+		windup_quat,
 		attack_pos,
-		_degrees_to_quat(attack_rot),
+		attack_quat,
 		final_pos,
-		_degrees_to_quat(final_rot),
+		final_quat,
 		next_stance,
 		camera_kick_dir,
 		Callable(self, "_on_attack_impact_event"),
@@ -210,25 +250,6 @@ func _apply_camera_feedback(dir: Vector3) -> void:
 	# Retorno suave
 	tween.tween_property(camera, "rotation_degrees", original_rot, 0.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
-func _lerp_degrees(from: Vector3, to: Vector3, weight: float) -> Vector3:
-	return Vector3(
-		rad_to_deg(lerp_angle(deg_to_rad(from.x), deg_to_rad(to.x), weight)),
-		rad_to_deg(lerp_angle(deg_to_rad(from.y), deg_to_rad(to.y), weight)),
-		rad_to_deg(lerp_angle(deg_to_rad(from.z), deg_to_rad(to.z), weight))
-	)
-
-func _normalize_degrees(rot: Vector3) -> Vector3:
-	return Vector3(
-		wrapf(rot.x, -180.0, 180.0),
-		wrapf(rot.y, -180.0, 180.0),
-		wrapf(rot.z, -180.0, 180.0)
-	)
-
-func _set_weapon_rotation_quat_weight(weight: float, from_rot: Vector3, to_rot: Vector3) -> void:
-	var from_quat := _degrees_to_quat(from_rot)
-	var to_quat := _degrees_to_quat(to_rot)
-	weapon_pivot.quaternion = from_quat.slerp(to_quat, weight)
-
 func _degrees_to_quat(rot_degrees: Vector3) -> Quaternion:
 	var rot_radians := Vector3(
 		deg_to_rad(rot_degrees.x),
@@ -236,11 +257,6 @@ func _degrees_to_quat(rot_degrees: Vector3) -> Quaternion:
 		deg_to_rad(rot_degrees.z)
 	)
 	return Quaternion.from_euler(rot_radians)
-
-func _rotation_distance_degrees(from_rot: Vector3, to_rot: Vector3) -> float:
-	var from_quat := _degrees_to_quat(_normalize_degrees(from_rot))
-	var to_quat := _degrees_to_quat(_normalize_degrees(to_rot))
-	return rad_to_deg(from_quat.angle_to(to_quat))
 
 func _on_attack_impact_event(camera_kick_dir: Vector3) -> void:
 	_apply_camera_feedback(camera_kick_dir)
@@ -296,20 +312,41 @@ func instantiate_weapon(weapon_scene: PackedScene) -> void:
 func _on_combat_direction_changed(dir_index: int) -> void:
 	if is_attacking or combat_ui.is_locked:
 		return
+		
+	stance_from_index = current_stance_index
+	stance_to_index = dir_index
+	
+	# Captura o estado REAL de onde estamos saindo (pode ser mid-air)
+	stance_actual_start_pos = weapon_pivot.position
+	stance_actual_start_quat = weapon_pivot.quaternion
+	
+	stance_transitioning = true
+	stance_transition_elapsed = 0.0
+	
 	current_stance_index = dir_index
 	target_stance_pos = STANCES[dir_index]["pos"]
 	target_stance_rot = STANCES[dir_index]["rot"]
 
-func _get_stable_target_rotation(current_rot: Vector3, target_rot: Vector3) -> Vector3:
-	return Vector3(
-		_closest_angle_degrees(current_rot.x, target_rot.x),
-		_closest_angle_degrees(current_rot.y, target_rot.y),
-		_closest_angle_degrees(current_rot.z, target_rot.z)
-	)
+func _smooth_step(t: float) -> float:
+	t = clampf(t, 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t)
 
-func _closest_angle_degrees(current: float, target: float) -> float:
-	var delta := wrapf(target - current, -180.0, 180.0)
-	return current + delta
+func _quadratic_bezier(p0: Vector3, p1: Vector3, p2: Vector3, t: float) -> Vector3:
+	var u := 1.0 - t
+	return (u * u * p0) + (2.0 * u * t * p1) + (t * t * p2)
+
+# Garante que o SLERP sempre toma o caminho mais curto,
+# evitando rotações inesperadas quando quaternions são quase opostos (ex: Z=+180 vs Z=-180).
+func _slerp_short(from: Quaternion, to: Quaternion, weight: float) -> Quaternion:
+	if from.dot(to) < 0.0:
+		to = -to
+	return from.slerp(to, weight)
+
+func _is_bottom_cross_transition(from_index: int, to_index: int) -> bool:
+	return (
+		(from_index == 4 and to_index == 3) or
+		(from_index == 3 and to_index == 4)
+	)
 # endregion
 
 # region --- Lógica de Movimento ---
