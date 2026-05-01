@@ -105,13 +105,9 @@ func update_weapon_stance(delta: float) -> void:
 		target_rot = DEFENSE_STANCE["rot"]
 		
 	# Interpolação de Posição
-	weapon_pivot.position = weapon_pivot.position.lerp(target_pos, delta * 15.0)
-	
-	# Interpolação suave da rotação usando lerp_angle para evitar "saltos"
-	var current_rot = weapon_pivot.rotation_degrees
-	weapon_pivot.rotation_degrees.x = lerp_angle(deg_to_rad(current_rot.x), deg_to_rad(target_rot.x), delta * 15.0) * (180.0/PI)
-	weapon_pivot.rotation_degrees.y = lerp_angle(deg_to_rad(current_rot.y), deg_to_rad(target_rot.y), delta * 15.0) * (180.0/PI)
-	weapon_pivot.rotation_degrees.z = lerp_angle(deg_to_rad(current_rot.z), deg_to_rad(target_rot.z), delta * 15.0) * (180.0/PI)
+	var stance_weight := clampf(delta * 15.0, 0.0, 1.0)
+	weapon_pivot.position = weapon_pivot.position.lerp(target_pos, stance_weight)
+	_set_weapon_rotation_quat_weight(stance_weight, weapon_pivot.rotation_degrees, target_rot)
 
 func perform_attack() -> void:
 	if is_attacking or not can_attack:
@@ -126,10 +122,11 @@ func perform_attack() -> void:
 	var next_stance = _get_next_stance_after_attack(current_stance_index)
 	combat_ui.set_direction(next_stance)
 	
-	var original_pos = target_stance_pos
-	var original_rot = target_stance_rot
+	# Usa a pose atual real como origem para evitar "snap" quando a arma ainda está em transição.
+	var original_pos = weapon_pivot.position
+	var original_rot = _normalize_degrees(weapon_pivot.rotation_degrees)
 	var final_pos = STANCES[next_stance]["pos"]
-	var final_rot = STANCES[next_stance]["rot"]
+	var final_rot = _normalize_degrees(STANCES[next_stance]["rot"])
 	
 	# 2. Calcular parâmetros de impacto
 	var is_thrust = (current_stance_index == 0)
@@ -138,12 +135,12 @@ func perform_attack() -> void:
 	
 	var lerp_weight = 0.5 
 	var attack_pos = original_pos.lerp(final_pos, lerp_weight) + Vector3(0, 0, lunge_z)
-	var attack_rot = _lerp_degrees(original_rot, final_rot, lerp_weight)
+	var attack_rot = _normalize_degrees(_lerp_degrees(original_rot, final_rot, lerp_weight))
 	
 	# Antecipação (Recuo antes do golpe)
 	var windup_lerp = 0.25
 	var windup_pos = original_pos.lerp(final_pos, windup_lerp) + Vector3(0, 0.05, 0.15)
-	var windup_rot = _lerp_degrees(original_rot, final_rot, windup_lerp) + Vector3(8, 0, 0)
+	var windup_rot = _normalize_degrees(_lerp_degrees(original_rot, final_rot, windup_lerp) + Vector3(8, 0, 0))
 	
 	# Ajustes de peso baseados na postura inicial
 	var camera_kick_dir = Vector3.ZERO
@@ -164,15 +161,35 @@ func perform_attack() -> void:
 			attack_pos = original_pos + Vector3(0, 0, -2.5)
 			camera_kick_dir = Vector3(0.8, 0, 0)
 
+	# Segurança de trajetória:
+	# evita que a animação "puxe" a espada para o player quando STANCES/offsets mudam.
+	var max_allowed_pullback_z: float = original_pos.z + 0.08
+	var min_required_lunge_z: float = original_pos.z - (2.5 if is_thrust else 0.35)
+	windup_pos.z = min(windup_pos.z, max_allowed_pullback_z)
+	attack_pos.z = min(attack_pos.z, min_required_lunge_z)
+	
+	attack_rot = _normalize_degrees(attack_rot)
+	windup_rot = _normalize_degrees(windup_rot)
+
 	var tween = create_tween().set_parallel(false)
 	
 	# --- ESTÁGIO 1: ANTECIPAÇÃO (Wind-up) ---
 	tween.tween_property(weapon_pivot, "position", windup_pos, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_property(weapon_pivot, "rotation_degrees", windup_rot, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_method(
+		_set_weapon_rotation_quat_weight.bind(original_rot, windup_rot),
+		0.0,
+		1.0,
+		0.15
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	
 	# --- ESTÁGIO 2: IMPACTO (The Strike) ---
 	tween.tween_property(weapon_pivot, "position", attack_pos, 0.12).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_property(weapon_pivot, "rotation_degrees", attack_rot, 0.12).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_method(
+		_set_weapon_rotation_quat_weight.bind(windup_rot, attack_rot),
+		0.0,
+		1.0,
+		0.12
+	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	
 	# Feedback de impacto
 	tween.parallel().tween_callback(func(): 
@@ -182,7 +199,12 @@ func perform_attack() -> void:
 	
 	# --- ESTÁGIO 3: RECUPERAÇÃO (Follow-through) ---
 	tween.tween_property(weapon_pivot, "position", final_pos, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_property(weapon_pivot, "rotation_degrees", final_rot, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_method(
+		_set_weapon_rotation_quat_weight.bind(attack_rot, final_rot),
+		0.0,
+		1.0,
+		0.4
+	).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	
 	# --- ESTÁGIO 4: COOLDOWN E RESET ---
 	tween.tween_interval(0.05)
@@ -213,6 +235,26 @@ func _lerp_degrees(from: Vector3, to: Vector3, weight: float) -> Vector3:
 		rad_to_deg(lerp_angle(deg_to_rad(from.y), deg_to_rad(to.y), weight)),
 		rad_to_deg(lerp_angle(deg_to_rad(from.z), deg_to_rad(to.z), weight))
 	)
+
+func _normalize_degrees(rot: Vector3) -> Vector3:
+	return Vector3(
+		wrapf(rot.x, -180.0, 180.0),
+		wrapf(rot.y, -180.0, 180.0),
+		wrapf(rot.z, -180.0, 180.0)
+	)
+
+func _set_weapon_rotation_quat_weight(weight: float, from_rot: Vector3, to_rot: Vector3) -> void:
+	var from_quat := _degrees_to_quat(from_rot)
+	var to_quat := _degrees_to_quat(to_rot)
+	weapon_pivot.quaternion = from_quat.slerp(to_quat, weight)
+
+func _degrees_to_quat(rot_degrees: Vector3) -> Quaternion:
+	var rot_radians := Vector3(
+		deg_to_rad(rot_degrees.x),
+		deg_to_rad(rot_degrees.y),
+		deg_to_rad(rot_degrees.z)
+	)
+	return Quaternion.from_euler(rot_radians)
 
 func _get_next_stance_after_attack(current: int) -> int:
 	match current:
