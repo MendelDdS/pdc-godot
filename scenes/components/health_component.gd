@@ -15,7 +15,7 @@ func _ready() -> void:
 func take_damage(damage: int) -> void:
 	current_health -= damage
 	current_health = max(current_health, 0)
-
+	print("Current Health", current_health)
 	if current_health <= 0:
 		emit_signal("entity_died")
 	else: 

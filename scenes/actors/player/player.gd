@@ -31,6 +31,7 @@ const DEFENSE_STANCE = {"pos": Vector3(0.7, 0.5, -0.2), "rot": Vector3(180, 0, 4
 @onready var back_ray: RayCast3D = $BackRay
 @onready var left_ray: RayCast3D = $LeftRay
 @onready var right_ray: RayCast3D = $RightRay
+@onready var melee_ray: RayCast3D = $CameraPivot/Camera3D/MeleeRay
 # endregion
 
 # region --- Estado do Personagem ---
@@ -47,6 +48,8 @@ var target_stance_pos: Vector3 = STANCES[0]["pos"]
 var target_stance_rot: Vector3 = STANCES[0]["rot"]
 var is_attacking: bool = false
 var is_defending: bool = false
+var can_attack: bool = true
+
 # endregion
 
 # region --- Ciclo de Vida ---
@@ -62,6 +65,9 @@ func _ready() -> void:
 	combat_ui.direction_changed.connect(_on_combat_direction_changed)
 	
 	instantiate_weapon(SWORD_SCENE)
+	
+	# Impedir que a espada acerte o próprio jogador
+	melee_ray.add_exception(self)
 
 func _process(delta: float) -> void:
 	handle_head_bob(delta)
@@ -84,7 +90,7 @@ func handle_combat_input() -> void:
 	is_defending = Input.is_action_pressed("Item Passive")
 	
 	# Detectar ataque (clique único)
-	if Input.is_action_just_pressed("Item Action"):
+	if Input.is_action_just_pressed("Item Action") and can_attack and not is_defending:
 		perform_attack()
 
 func update_weapon_stance(delta: float) -> void:
@@ -108,47 +114,135 @@ func update_weapon_stance(delta: float) -> void:
 	weapon_pivot.rotation_degrees.z = lerp_angle(deg_to_rad(current_rot.z), deg_to_rad(target_rot.z), delta * 15.0) * (180.0/PI)
 
 func perform_attack() -> void:
-	if is_attacking:
+	if is_attacking or not can_attack:
 		return
 		
 	is_attacking = true
+	can_attack = false
+	combat_ui.is_locked = true
+	melee_ray.enabled = true
 	
-	# Usar posições de destino da postura como base para um bote consistente
+	# 1. Preparar dados da postura e sincronizar UI
+	var next_stance = _get_next_stance_after_attack(current_stance_index)
+	combat_ui.set_direction(next_stance)
+	
 	var original_pos = target_stance_pos
 	var original_rot = target_stance_rot
+	var final_pos = STANCES[next_stance]["pos"]
+	var final_rot = STANCES[next_stance]["rot"]
 	
-	# Calcular destino do ataque baseado na postura
-	var attack_pos = original_pos + Vector3(0, 0, -1.2) # Estocada padrão longa
-	var attack_rot = original_rot
+	# 2. Calcular parâmetros de impacto
+	var is_thrust = (current_stance_index == 0)
+	# Menos Z para cortes para evitar o efeito de "empurrar"; mais Z para estocada
+	var lunge_z = -2.5 if is_thrust else -0.7 
 	
+	var lerp_weight = 0.1 
+	var attack_pos = original_pos.lerp(final_pos, lerp_weight) + Vector3(0, 0, lunge_z)
+	var attack_rot = _lerp_degrees(original_rot, final_rot, lerp_weight)
+	
+	# Antecipação (Recuo antes do golpe)
+	var windup_lerp = 0.25
+	var windup_pos = original_pos.lerp(final_pos, windup_lerp) + Vector3(0, 0.05, 0.15)
+	var windup_rot = _lerp_degrees(original_rot, final_rot, windup_lerp) + Vector3(8, 0, 0)
+	
+	# Ajustes de peso baseados na postura inicial
+	var camera_kick_dir = Vector3.ZERO
 	match current_stance_index:
-		1: # TOP -> Golpe descendente
-			attack_pos = original_pos + Vector3(0, -0.6, -0.8)
-			attack_rot.x -= 60
-		2: # TOP_RIGHT -> Corte diagonal descendente
-			attack_pos = original_pos + Vector3(-0.6, -0.4, -0.8)
-			attack_rot.y += 45
-		5: # TOP_LEFT -> Corte diagonal descendente
-			attack_pos = original_pos + Vector3(0.6, -0.4, -0.8)
-			attack_rot.y -= 45
-		3: # BOTTOM_RIGHT -> Corte ascendente
-			attack_pos = original_pos + Vector3(-0.5, 0.6, -0.8)
-			attack_rot.x += 60
-		4: # BOTTOM_LEFT -> Corte ascendente
-			attack_pos = original_pos + Vector3(0.5, 0.6, -0.8)
-			attack_rot.x += 60
+		1: # TOP -> Corte descendente pesado (O "Rasgo")
+			attack_pos.y -= 0.45 # Aumentamos a descida para o corte
+			attack_rot.x -= 35
+			attack_rot.z += 20 # Inclina o gume da lâmina para o efeito de rasgo
+			camera_kick_dir = Vector3(1.2, 0.2, 0)
+		2, 3: # RIGHT SIDES
+			attack_rot.z -= 15 # Inclina gume
+			camera_kick_dir = Vector3(0, 1, -0.5)
+		4, 5: # LEFT SIDES
+			attack_rot.z += 15 # Inclina gume
+			camera_kick_dir = Vector3(0, -1, 0.5)
+		0: # CENTER -> Estocada
+			windup_pos = original_pos + Vector3(0, 0, 0.4)
+			attack_pos = original_pos + Vector3(0, 0, -2.5)
+			camera_kick_dir = Vector3(0.8, 0, 0)
+
+	var tween = create_tween().set_parallel(false)
+	
+	# --- ESTÁGIO 1: ANTECIPAÇÃO (Wind-up) ---
+	tween.tween_property(weapon_pivot, "position", windup_pos, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(weapon_pivot, "rotation_degrees", windup_rot, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	
+	# --- ESTÁGIO 2: IMPACTO (The Strike) ---
+	tween.tween_property(weapon_pivot, "position", attack_pos, 0.12).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(weapon_pivot, "rotation_degrees", attack_rot, 0.12).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	
+	# Feedback de impacto
+	tween.parallel().tween_callback(func(): 
+		_apply_camera_feedback(camera_kick_dir)
+		_check_hit()
+	)
+	
+	# --- ESTÁGIO 3: RECUPERAÇÃO (Follow-through) ---
+	tween.tween_property(weapon_pivot, "position", final_pos, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(weapon_pivot, "rotation_degrees", final_rot, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	
+	# --- ESTÁGIO 4: COOLDOWN E RESET ---
+	tween.tween_interval(0.05)
+	tween.tween_callback(func(): 
+		is_attacking = false
+		can_attack = true
+		combat_ui.is_locked = false
+		melee_ray.enabled = false
+		current_stance_index = next_stance
+		target_stance_pos = final_pos
+		target_stance_rot = final_rot
+	)
+
+func _apply_camera_feedback(dir: Vector3) -> void:
+	var kick_strength = 2.0
+	var original_rot = camera.rotation_degrees
+	var target_rot = original_rot + dir * kick_strength
 	
 	var tween = create_tween()
-	
-	# Ida do ataque (Rápida e linear)
-	tween.tween_property(weapon_pivot, "position", attack_pos, 0.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_property(weapon_pivot, "rotation_degrees", attack_rot, 0.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	
-	# Volta do ataque (Suave)
-	tween.tween_property(weapon_pivot, "position", original_pos, 0.25).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tween.parallel().tween_property(weapon_pivot, "rotation_degrees", original_rot, 0.25).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	
-	tween.tween_callback(func(): is_attacking = false)
+	# Kick rápido
+	tween.tween_property(camera, "rotation_degrees", target_rot, 0.05).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	# Retorno suave
+	tween.tween_property(camera, "rotation_degrees", original_rot, 0.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+func _lerp_degrees(from: Vector3, to: Vector3, weight: float) -> Vector3:
+	return Vector3(
+		rad_to_deg(lerp_angle(deg_to_rad(from.x), deg_to_rad(to.x), weight)),
+		rad_to_deg(lerp_angle(deg_to_rad(from.y), deg_to_rad(to.y), weight)),
+		rad_to_deg(lerp_angle(deg_to_rad(from.z), deg_to_rad(to.z), weight))
+	)
+
+func _get_next_stance_after_attack(current: int) -> int:
+	match current:
+		1: # TOP -> Move para baixo aleatoriamente
+			return 3 if randf() > 0.5 else 4 # BOTTOM_RIGHT ou BOTTOM_LEFT
+		2: # TOP_RIGHT -> BOTTOM_LEFT
+			return 4
+		3: # BOTTOM_RIGHT -> TOP_LEFT
+			return 5
+		4: # BOTTOM_LEFT -> TOP_RIGHT
+			return 2
+		5: # TOP_LEFT -> BOTTOM_RIGHT
+			return 3
+		_: # CENTER ou outros -> Mantém
+			return current
+
+func _check_hit() -> void:
+	melee_ray.force_raycast_update()
+	if melee_ray.is_colliding():
+		var target = melee_ray.get_collider()
+		print("Hit something: ", target.name)
+		
+		# Procurar por HealthComponent
+		var health = target.get_node_or_null("HealthComponent")
+		if not health and target.get_parent():
+			health = target.get_parent().get_node_or_null("HealthComponent")
+			
+		if health:
+			print("Dealing damage to ", target.name)
+			health.take_damage(20)
 
 func instantiate_weapon(weapon_scene: PackedScene) -> void:
 	if current_weapon:

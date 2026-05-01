@@ -1,17 +1,23 @@
 [gd_scene format=3 uid="uid://bqf3g8sdhojh0"]
 
 [ext_resource type="PackedScene" uid="uid://b3yxp8nmtcyi" path="res://scenes/components/health_component.tscn" id="1_g3nra"]
+[ext_resource type="Script" uid="uid://cj1haeprxtrx2" path="res://scenes/actors/enemies/enemy.gd" id="1_tiqlc"]
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_gejs6"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_tiqlc"]
+height = 2.755
 
 [node name="Enemy" type="CharacterBody3D" unique_id=996212000]
+collision_layer = 2
+script = ExtResource("1_tiqlc")
 
 [node name="HealthComponent" parent="." unique_id=1503925823 instance=ExtResource("1_g3nra")]
 
 [node name="EnemyBody" type="MeshInstance3D" parent="." unique_id=1524263456]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 mesh = SubResource("CapsuleMesh_gejs6")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1120864563]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 shape = SubResource("CapsuleShape3D_tiqlc")

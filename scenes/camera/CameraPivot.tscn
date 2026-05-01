@@ -7,4 +7,9 @@ script = ExtResource("1_scdyt")
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1419696167]
 
+[node name="MeleeRay" type="RayCast3D" parent="Camera3D" unique_id=987654321]
+enabled = false
+target_position = Vector3(0, 0, -5.5)
+collision_mask = 2
+
 [node name="WeaponPivot" type="Node3D" parent="Camera3D" unique_id=123456789]

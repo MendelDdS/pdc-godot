@@ -19,12 +19,18 @@ var virtual_mouse_pos: Vector2 = Vector2.ZERO
 var center_threshold: float = 30.0
 var max_distance: float = 100.0
 var mouse_sensitivity: float = 0.5 # Ajuste este valor para diminuir a sensibilidade
+var is_locked: bool = false
 
 func _ready() -> void:
 	update_visuals()
 
 func handle_mouse_movement(relative_mouse: Vector2) -> void:
+	if is_locked:
+		return
+	
 	virtual_mouse_pos += relative_mouse * mouse_sensitivity
+	
+	# Limit mouse distance
 	virtual_mouse_pos = virtual_mouse_pos.limit_length(max_distance)
 	
 	$Cursor.position = virtual_mouse_pos - ($Cursor.size / 2)
@@ -66,3 +72,28 @@ func update_visuals() -> void:
 		else:
 			node.modulate = Color.WHITE
 			node.scale = Vector2(1.0, 1.0)
+
+func set_direction(dir: int) -> void:
+	if dir == current_direction:
+		return
+		
+	current_direction = dir
+	update_visuals()
+	
+	# Atualizar virtual_mouse_pos para manter a consistência
+	match dir:
+		Direction.CENTER:
+			virtual_mouse_pos = Vector2.ZERO
+		Direction.TOP:
+			virtual_mouse_pos = Vector2(0, -max_distance * 0.8)
+		Direction.TOP_RIGHT:
+			virtual_mouse_pos = Vector2.from_angle(deg_to_rad(72 - 90)) * max_distance * 0.8
+		Direction.BOTTOM_RIGHT:
+			virtual_mouse_pos = Vector2.from_angle(deg_to_rad(144 - 90)) * max_distance * 0.8
+		Direction.BOTTOM_LEFT:
+			virtual_mouse_pos = Vector2.from_angle(deg_to_rad(216 - 90)) * max_distance * 0.8
+		Direction.TOP_LEFT:
+			virtual_mouse_pos = Vector2.from_angle(deg_to_rad(288 - 90)) * max_distance * 0.8
+	
+	# Atualizar posição visual do cursor
+	$Cursor.position = virtual_mouse_pos - ($Cursor.size / 2)

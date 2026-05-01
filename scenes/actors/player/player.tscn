@@ -15,7 +15,7 @@ height = 1.8
 script = ExtResource("1_1fipg")
 
 [node name="CameraPivot" parent="." unique_id=1839286025 instance=ExtResource("2_oj104")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, -0.40341085)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4785786, -0.40341085)
 
 [node name="HealthComponent" parent="." unique_id=1503925823 instance=ExtResource("2_6b2fh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
