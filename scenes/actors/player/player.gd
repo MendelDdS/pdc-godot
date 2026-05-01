@@ -7,6 +7,8 @@ const ROTATE_DURATION: float = 0.3
 const HEAD_BOB_FREQ: float = 8.0
 const HEAD_BOB_AMP: float = 0.08
 const TILT_AMOUNT: float = 2.5 # Graus
+const STANCE_TRANSITION_DURATION: float = 0.24
+const STANCE_ROTATE_SPEED: float = 12.0
 
 # Configurações de Combate
 const SWORD_SCENE = preload("res://scenes/actors/items/simple_sword.tscn")
@@ -105,10 +107,13 @@ func update_weapon_stance(delta: float) -> void:
 		target_pos = DEFENSE_STANCE["pos"]
 		target_rot = DEFENSE_STANCE["rot"]
 		
-	# Interpolação de Posição
-	var stance_weight := clampf(delta * 15.0, 0.0, 1.0)
-	weapon_pivot.position = weapon_pivot.position.lerp(target_pos, stance_weight)
-	_set_weapon_rotation_quat_weight(stance_weight, weapon_pivot.rotation_degrees, target_rot)
+	# Movimento linear de posição.
+	weapon_pivot.position = weapon_pivot.position.move_toward(target_pos, STANCE_TRANSITION_DURATION * 25.0 * delta)
+
+	# Rotação contínua, estável, sem flip 180/-180.
+	var stable_target_rot := _get_stable_target_rotation(weapon_pivot.rotation_degrees, target_rot)
+	var rot_weight := clampf(delta * STANCE_ROTATE_SPEED, 0.0, 1.0)
+	_set_weapon_rotation_quat_weight(rot_weight, weapon_pivot.rotation_degrees, stable_target_rot)
 
 func perform_attack() -> void:
 	if is_attacking or not can_attack:
@@ -232,6 +237,11 @@ func _degrees_to_quat(rot_degrees: Vector3) -> Quaternion:
 	)
 	return Quaternion.from_euler(rot_radians)
 
+func _rotation_distance_degrees(from_rot: Vector3, to_rot: Vector3) -> float:
+	var from_quat := _degrees_to_quat(_normalize_degrees(from_rot))
+	var to_quat := _degrees_to_quat(_normalize_degrees(to_rot))
+	return rad_to_deg(from_quat.angle_to(to_quat))
+
 func _on_attack_impact_event(camera_kick_dir: Vector3) -> void:
 	_apply_camera_feedback(camera_kick_dir)
 	_check_hit()
@@ -289,6 +299,17 @@ func _on_combat_direction_changed(dir_index: int) -> void:
 	current_stance_index = dir_index
 	target_stance_pos = STANCES[dir_index]["pos"]
 	target_stance_rot = STANCES[dir_index]["rot"]
+
+func _get_stable_target_rotation(current_rot: Vector3, target_rot: Vector3) -> Vector3:
+	return Vector3(
+		_closest_angle_degrees(current_rot.x, target_rot.x),
+		_closest_angle_degrees(current_rot.y, target_rot.y),
+		_closest_angle_degrees(current_rot.z, target_rot.z)
+	)
+
+func _closest_angle_degrees(current: float, target: float) -> float:
+	var delta := wrapf(target - current, -180.0, 180.0)
+	return current + delta
 # endregion
 
 # region --- Lógica de Movimento ---
