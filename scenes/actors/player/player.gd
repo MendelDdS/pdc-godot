@@ -11,12 +11,12 @@ const TILT_AMOUNT: float = 2.5 # Graus
 # Configurações de Combate
 const SWORD_SCENE = preload("res://scenes/actors/items/simple_sword.tscn")
 const STANCES = {
-	0: {"pos": Vector3(0.3, 0, -0.2), "rot": Vector3(-90, 0, 0)},    # CENTER (Meio)
-	1: {"pos": Vector3(0, 0.1, -0.5), "rot": Vector3(-20, 0, 0)},     # TOP (Cima)
-	2: {"pos": Vector3(0.3, 0, -0.4), "rot": Vector3(-20, -60, -40)},   # TOP_RIGHT (Cima-Direita)
-	3: {"pos": Vector3(0.2, -0.2, -0.6), "rot": Vector3(-140, -60, -50)}, # BOTTOM_RIGHT (Baixo-Direita)
-	4: {"pos": Vector3(-0.2, -0.2, -0.5), "rot": Vector3(-140, 40, 40)},  # BOTTOM_LEFT (Baixo-Esquerda)
-	5: {"pos": Vector3(-0.3, 0, -0.4), "rot": Vector3(-50, 60, 40)}     # TOP_LEFT (Cima-Esquerda)
+	0: {"pos": Vector3(0.3, -0.3, -0.7), "rot": Vector3(0, -90, 90)},    # CENTER (Meio)
+	1: {"pos": Vector3(0, 0.5, -0.7), "rot": Vector3(0, -90, 0)},     # TOP (Cima)
+	2: {"pos": Vector3(0.3, 0, -0.7), "rot": Vector3(-45, -90, 0)},   # TOP_RIGHT (Cima-Direita)
+	3: {"pos": Vector3(0.5, -0.3, -0.7), "rot": Vector3(45, -90, 180)}, # BOTTOM_RIGHT (Baixo-Direita)
+	4: {"pos": Vector3(-0.5, -0.3, -0.7), "rot": Vector3(-45, -90, -180)},  # BOTTOM_LEFT (Baixo-Esquerda)
+	5: {"pos": Vector3(-0.3, 0, -0.7), "rot": Vector3(45, -90, 0)}     # TOP_LEFT (Cima-Esquerda)
 }
 const DEFENSE_STANCE = {"pos": Vector3(0.7, 0.5, -0.2), "rot": Vector3(180, 0, 45)}
 # endregion
@@ -136,7 +136,7 @@ func perform_attack() -> void:
 	# Menos Z para cortes para evitar o efeito de "empurrar"; mais Z para estocada
 	var lunge_z = -2.5 if is_thrust else -0.7 
 	
-	var lerp_weight = 0.1 
+	var lerp_weight = 0.5 
 	var attack_pos = original_pos.lerp(final_pos, lerp_weight) + Vector3(0, 0, lunge_z)
 	var attack_rot = _lerp_degrees(original_rot, final_rot, lerp_weight)
 	
@@ -149,7 +149,7 @@ func perform_attack() -> void:
 	var camera_kick_dir = Vector3.ZERO
 	match current_stance_index:
 		1: # TOP -> Corte descendente pesado (O "Rasgo")
-			attack_pos.y -= 0.45 # Aumentamos a descida para o corte
+			attack_pos.y -= 0.45
 			attack_rot.x -= 35
 			attack_rot.z += 20 # Inclina o gume da lâmina para o efeito de rasgo
 			camera_kick_dir = Vector3(1.2, 0.2, 0)

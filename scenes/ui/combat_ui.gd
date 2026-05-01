@@ -18,7 +18,7 @@ var current_direction: int = Direction.CENTER
 var virtual_mouse_pos: Vector2 = Vector2.ZERO
 var center_threshold: float = 30.0
 var max_distance: float = 100.0
-var mouse_sensitivity: float = 0.5 # Ajuste este valor para diminuir a sensibilidade
+var mouse_sensitivity: float = 1 # Ajuste este valor para diminuir a sensibilidade
 var is_locked: bool = false
 
 func _ready() -> void:
