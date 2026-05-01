@@ -11,12 +11,12 @@ const TILT_AMOUNT: float = 2.5 # Graus
 # Configurações de Combate
 const SWORD_SCENE = preload("res://scenes/actors/items/simple_sword.tscn")
 const STANCES = {
-	0: {"pos": Vector3(0.3, -0.3, -0.7), "rot": Vector3(0, -90, 90)},    # CENTER (Meio)
-	1: {"pos": Vector3(0, 0.5, -0.7), "rot": Vector3(0, -90, 0)},     # TOP (Cima)
-	2: {"pos": Vector3(0.3, 0, -0.7), "rot": Vector3(-45, -90, 0)},   # TOP_RIGHT (Cima-Direita)
-	3: {"pos": Vector3(0.5, -0.3, -0.7), "rot": Vector3(45, -90, 180)}, # BOTTOM_RIGHT (Baixo-Direita)
-	4: {"pos": Vector3(-0.5, -0.3, -0.7), "rot": Vector3(-45, -90, -180)},  # BOTTOM_LEFT (Baixo-Esquerda)
-	5: {"pos": Vector3(-0.3, 0, -0.7), "rot": Vector3(45, -90, 0)}     # TOP_LEFT (Cima-Esquerda)
+	0: {"pos": Vector3(0.5, -0.3, -1), "rot": Vector3(0, -90, 90)},    # CENTER (Meio)
+	1: {"pos": Vector3(0, 0.7, -1), "rot": Vector3(0, -90, 0)},     # TOP (Cima)
+	2: {"pos": Vector3(0.8, 0.5, -1), "rot": Vector3(-45, -90, 0)},   # TOP_RIGHT (Cima-Direita)
+	3: {"pos": Vector3(0.8, -0.5, -1), "rot": Vector3(45, -90, 180)}, # BOTTOM_RIGHT (Baixo-Direita)
+	4: {"pos": Vector3(-0.8, -0.5, -1), "rot": Vector3(-45, -90, -180)},  # BOTTOM_LEFT (Baixo-Esquerda)
+	5: {"pos": Vector3(-0.8, 0.5, -1), "rot": Vector3(45, -90, 0)}     # TOP_LEFT (Cima-Esquerda)
 }
 const DEFENSE_STANCE = {"pos": Vector3(0.7, 0.5, -0.2), "rot": Vector3(180, 0, 45)}
 # endregion
@@ -32,6 +32,7 @@ const DEFENSE_STANCE = {"pos": Vector3(0.7, 0.5, -0.2), "rot": Vector3(180, 0, 4
 @onready var left_ray: RayCast3D = $LeftRay
 @onready var right_ray: RayCast3D = $RightRay
 @onready var melee_ray: RayCast3D = $CameraPivot/Camera3D/MeleeRay
+@onready var weapon_attack_animator: WeaponAttackAnimator = $WeaponAttackAnimator
 # endregion
 
 # region --- Estado do Personagem ---
@@ -119,8 +120,15 @@ func perform_attack() -> void:
 	melee_ray.enabled = true
 	
 	# 1. Preparar dados da postura e sincronizar UI
-	var next_stance = _get_next_stance_after_attack(current_stance_index)
+	var attack_from_stance := current_stance_index
+	var next_stance = _get_next_stance_after_attack(attack_from_stance)
 	combat_ui.set_direction(next_stance)
+
+	# Força origem limpa do ataque para evitar bug em transição rápida.
+	var stance_origin_pos: Vector3 = STANCES[attack_from_stance]["pos"]
+	var stance_origin_rot: Vector3 = _normalize_degrees(STANCES[attack_from_stance]["rot"])
+	weapon_pivot.position = stance_origin_pos
+	_set_weapon_rotation_quat_weight(1.0, weapon_pivot.rotation_degrees, stance_origin_rot)
 	
 	# Usa a pose atual real como origem para evitar "snap" quando a arma ainda está em transição.
 	var original_pos = weapon_pivot.position
@@ -129,7 +137,7 @@ func perform_attack() -> void:
 	var final_rot = _normalize_degrees(STANCES[next_stance]["rot"])
 	
 	# 2. Calcular parâmetros de impacto
-	var is_thrust = (current_stance_index == 0)
+	var is_thrust = (attack_from_stance == 0)
 	# Menos Z para cortes para evitar o efeito de "empurrar"; mais Z para estocada
 	var lunge_z = -2.5 if is_thrust else -0.7 
 	
@@ -144,7 +152,7 @@ func perform_attack() -> void:
 	
 	# Ajustes de peso baseados na postura inicial
 	var camera_kick_dir = Vector3.ZERO
-	match current_stance_index:
+	match attack_from_stance:
 		1: # TOP -> Corte descendente pesado (O "Rasgo")
 			attack_pos.y -= 0.45
 			attack_rot.x -= 35
@@ -171,51 +179,19 @@ func perform_attack() -> void:
 	attack_rot = _normalize_degrees(attack_rot)
 	windup_rot = _normalize_degrees(windup_rot)
 
-	var tween = create_tween().set_parallel(false)
-	
-	# --- ESTÁGIO 1: ANTECIPAÇÃO (Wind-up) ---
-	tween.tween_property(weapon_pivot, "position", windup_pos, 0.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_method(
-		_set_weapon_rotation_quat_weight.bind(original_rot, windup_rot),
-		0.0,
-		1.0,
-		0.15
-	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	
-	# --- ESTÁGIO 2: IMPACTO (The Strike) ---
-	tween.tween_property(weapon_pivot, "position", attack_pos, 0.12).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_method(
-		_set_weapon_rotation_quat_weight.bind(windup_rot, attack_rot),
-		0.0,
-		1.0,
-		0.12
-	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	
-	# Feedback de impacto
-	tween.parallel().tween_callback(func(): 
-		_apply_camera_feedback(camera_kick_dir)
-		_check_hit()
-	)
-	
-	# --- ESTÁGIO 3: RECUPERAÇÃO (Follow-through) ---
-	tween.tween_property(weapon_pivot, "position", final_pos, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_method(
-		_set_weapon_rotation_quat_weight.bind(attack_rot, final_rot),
-		0.0,
-		1.0,
-		0.4
-	).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	
-	# --- ESTÁGIO 4: COOLDOWN E RESET ---
-	tween.tween_interval(0.05)
-	tween.tween_callback(func(): 
-		is_attacking = false
-		can_attack = true
-		combat_ui.is_locked = false
-		melee_ray.enabled = false
-		current_stance_index = next_stance
-		target_stance_pos = final_pos
-		target_stance_rot = final_rot
+	weapon_attack_animator.play_attack(
+		original_pos,
+		_degrees_to_quat(original_rot),
+		windup_pos,
+		_degrees_to_quat(windup_rot),
+		attack_pos,
+		_degrees_to_quat(attack_rot),
+		final_pos,
+		_degrees_to_quat(final_rot),
+		next_stance,
+		camera_kick_dir,
+		Callable(self, "_on_attack_impact_event"),
+		Callable(self, "_on_attack_animation_finished_event")
 	)
 
 func _apply_camera_feedback(dir: Vector3) -> void:
@@ -256,6 +232,19 @@ func _degrees_to_quat(rot_degrees: Vector3) -> Quaternion:
 	)
 	return Quaternion.from_euler(rot_radians)
 
+func _on_attack_impact_event(camera_kick_dir: Vector3) -> void:
+	_apply_camera_feedback(camera_kick_dir)
+	_check_hit()
+
+func _on_attack_animation_finished_event(next_stance: int, final_pos: Vector3, final_rot: Vector3) -> void:
+	is_attacking = false
+	can_attack = true
+	combat_ui.is_locked = false
+	melee_ray.enabled = false
+	current_stance_index = next_stance
+	target_stance_pos = final_pos
+	target_stance_rot = final_rot
+
 func _get_next_stance_after_attack(current: int) -> int:
 	match current:
 		1: # TOP -> Move para baixo aleatoriamente
@@ -295,6 +284,8 @@ func instantiate_weapon(weapon_scene: PackedScene) -> void:
 	_on_combat_direction_changed(0) # Forçar postura inicial
 
 func _on_combat_direction_changed(dir_index: int) -> void:
+	if is_attacking or combat_ui.is_locked:
+		return
 	current_stance_index = dir_index
 	target_stance_pos = STANCES[dir_index]["pos"]
 	target_stance_rot = STANCES[dir_index]["rot"]
