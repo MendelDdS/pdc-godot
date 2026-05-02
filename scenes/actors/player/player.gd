@@ -153,12 +153,12 @@ func update_weapon_stance(delta: float) -> void:
 func perform_attack() -> void:
 	if is_attacking or not can_attack:
 		return
-
+		
 	is_attacking = true
 	can_attack = false
 	combat_ui.is_locked = true
 	melee_ray.enabled = true
-
+	
 	var attack_from_stance := current_stance_index
 	var next_stance := _get_next_stance_after_attack(attack_from_stance)
 	combat_ui.set_direction(next_stance)
@@ -166,30 +166,33 @@ func perform_attack() -> void:
 	var original_pos: Vector3 = STANCES[attack_from_stance]["pos"]
 	var original_quat: Quaternion = _degrees_to_quat(STANCES[attack_from_stance]["rot"])
 	var final_pos: Vector3 = STANCES[next_stance]["pos"]
-	var final_rot_degrees: Vector3 = STANCES[next_stance]["rot"]
-	var final_quat: Quaternion = _degrees_to_quat(final_rot_degrees)
+	var final_quat: Quaternion = _degrees_to_quat(STANCES[next_stance]["rot"])
 
 	weapon_pivot.position = original_pos
 	weapon_pivot.quaternion = original_quat
 
-	var is_thrust := attack_from_stance == 0
+	var pose := _build_attack_pose(attack_from_stance, original_pos, original_quat)
+	var windup_pos: Vector3 = pose["windup_pos"]
+	var windup_quat: Quaternion = pose["windup_quat"]
+	var attack_pos: Vector3 = pose["attack_pos"]
+	var attack_quat: Quaternion = pose["attack_quat"]
+
 	var camera_kick_dir := Vector3.ZERO
-
-	var windup_pos := _build_windup_position(attack_from_stance, original_pos)
-	var attack_pos := _build_attack_position(attack_from_stance, original_pos)
-	var windup_quat := _build_windup_rotation(attack_from_stance, original_quat)
-	var attack_quat := _build_attack_rotation(attack_from_stance, original_quat)
-
 	match attack_from_stance:
 		1:
 			camera_kick_dir = Vector3(1.2, 0.2, 0.0)
-		2, 3:
+		2:
 			camera_kick_dir = Vector3(0.0, 1.0, -0.5)
-		4, 5:
+		3:
+			camera_kick_dir = Vector3(0.0, 1.0, -0.5)
+		4:
+			camera_kick_dir = Vector3(0.0, -1.0, 0.5)
+		5:
 			camera_kick_dir = Vector3(0.0, -1.0, 0.5)
 		0:
 			camera_kick_dir = Vector3(0.8, 0.0, 0.0)
 
+	var is_thrust := attack_from_stance == 0
 	var max_allowed_pullback_z := original_pos.z + 0.08
 	var min_required_lunge_z := original_pos.z - (2.5 if is_thrust else 0.35)
 	windup_pos.z = min(windup_pos.z, max_allowed_pullback_z)
@@ -203,7 +206,6 @@ func perform_attack() -> void:
 		attack_pos,
 		attack_quat,
 		final_pos,
-		final_rot_degrees,
 		final_quat,
 		next_stance,
 		camera_kick_dir,
@@ -211,78 +213,125 @@ func perform_attack() -> void:
 		Callable(self, "_on_attack_animation_finished_event")
 	)
 
+func _build_attack_pose(from_stance: int, original_pos: Vector3, original_quat: Quaternion) -> Dictionary:
+	match from_stance:
+		0:
+			return {
+				"windup_pos": original_pos + Vector3(0.0, 0.0, 0.40),
+				"windup_quat": original_quat * _local_quat(Vector3(-8.0, 0.0, 0.0)),
+				"attack_pos": original_pos + Vector3(0.0, 0.0, -2.5),
+				"attack_quat": original_quat
+			}
+		1:
+			return {
+				"windup_pos": original_pos + Vector3(0.0, 0.16, 0.20),
+				"windup_quat": original_quat * _local_quat(Vector3(-26.0, 0.0, 10.0)),
+				"attack_pos": original_pos + Vector3(0.0, -1.10, -0.95),
+				"attack_quat": original_quat * _local_quat(Vector3(78.0, 0.0, 18.0))
+			}
+		2: # TOP_RIGHT
+			return {
+				"windup_pos": original_pos + Vector3(0.14, 0.10, 0.18),
+				"windup_quat": original_quat * _local_quat(Vector3(-18.0, 0.0, 34.0)),
+				"attack_pos": original_pos + Vector3(-1.30, -0.98, -0.95),
+				"attack_quat": original_quat * _local_quat(Vector3(28.0, 0.0, -118.0))
+			}
+		3: # BOTTOM_RIGHT
+			return {
+				"windup_pos": original_pos + Vector3(0.12, -0.06, 0.14),
+				"windup_quat": original_quat * _local_quat(Vector3(-12.0, 0.0, 22.0)),
+				"attack_pos": original_pos + Vector3(-0.92, 0.76, -0.76),
+				"attack_quat": original_quat * _local_quat(Vector3(18.0, 0.0, -68.0))
+			}
+		4: # BOTTOM_LEFT
+			return {
+				"windup_pos": original_pos + Vector3(-0.12, -0.06, 0.14),
+				"windup_quat": original_quat * _local_quat(Vector3(12.0, 0.0, 22.0)),
+				"attack_pos": original_pos + Vector3(0.92, 0.76, -0.76),
+				"attack_quat": original_quat * _local_quat(Vector3(-18.0, 0.0, -68.0))
+			}
+		5: # TOP_LEFT
+			return {
+				"windup_pos": original_pos + Vector3(-0.14, 0.10, 0.18),
+				"windup_quat": original_quat * _local_quat(Vector3(18.0, 0.0, 34.0)),
+				"attack_pos": original_pos + Vector3(1.30, -0.98, -0.95),
+				"attack_quat": original_quat * _local_quat(Vector3(-28.0, 0.0, -118.0))
+			}
+		_:
+			return {
+				"windup_pos": original_pos + Vector3(0.0, 0.05, 0.15),
+				"windup_quat": original_quat,
+				"attack_pos": original_pos + Vector3(0.0, 0.0, -0.75),
+				"attack_quat": original_quat
+			}
 
 func _build_windup_position(from_stance: int, original_pos: Vector3) -> Vector3:
 	match from_stance:
 		0:
-			return original_pos + Vector3(0.0, 0.0, 0.4)
+			return original_pos + Vector3(0.0, 0.0, 0.40)
 		1:
-			return original_pos + Vector3(0.0, 0.12, 0.18)
+			return original_pos + Vector3(0.0, 0.16, 0.20)
 		2:
-			return original_pos + Vector3(0.10, 0.06, 0.14)
+			return original_pos + Vector3(0.14, 0.10, 0.18)
 		3:
-			return original_pos + Vector3(0.12, -0.04, 0.12)
+			return original_pos + Vector3(0.12, -0.06, 0.14)
 		4:
-			return original_pos + Vector3(-0.12, -0.04, 0.12)
+			return original_pos + Vector3(-0.12, -0.06, 0.14)
 		5:
-			return original_pos + Vector3(-0.10, 0.06, 0.14)
+			return original_pos + Vector3(-0.14, 0.10, 0.18)
 		_:
 			return original_pos + Vector3(0.0, 0.05, 0.15)
-
 
 func _build_attack_position(from_stance: int, original_pos: Vector3) -> Vector3:
 	match from_stance:
 		0:
 			return original_pos + Vector3(0.0, 0.0, -2.5)
 		1:
-			return original_pos + Vector3(0.0, -0.95, -0.75)
+			return original_pos + Vector3(0.0, -1.15, -1.05)
 		2:
-			return original_pos + Vector3(-0.95, -0.65, -0.65)
+			return original_pos + Vector3(-1.38, -1.02, -1.00)
 		3:
-			return original_pos + Vector3(-0.75, 0.55, -0.55)
+			return original_pos + Vector3(-0.98, 0.80, -0.80)
 		4:
-			return original_pos + Vector3(0.75, 0.55, -0.55)
+			return original_pos + Vector3(0.98, 0.80, -0.80)
 		5:
-			return original_pos + Vector3(0.95, -0.65, -0.65)
+			return original_pos + Vector3(1.38, -1.02, -1.00)
 		_:
-			return original_pos + Vector3(0.0, 0.0, -0.7)
-
+			return original_pos + Vector3(0.0, 0.0, -0.75)
 
 func _build_windup_rotation(from_stance: int, original_quat: Quaternion) -> Quaternion:
 	match from_stance:
 		0:
-			return original_quat * _local_quat(Vector3(-8.0, 0.0, 0.0))
+			return original_quat * _local_quat(Vector3(-10.0, 0.0, 0.0))
 		1:
-			return original_quat * _local_quat(Vector3(-18.0, 0.0, 8.0))
+			return original_quat * _local_quat(Vector3(-28.0, 0.0, 12.0))
 		2:
-			return original_quat * _local_quat(Vector3(-10.0, 0.0, 20.0))
+			return original_quat * _local_quat(Vector3(-18.0, 0.0, 34.0))
 		3:
-			return original_quat * _local_quat(Vector3(-6.0, 0.0, 18.0))
+			return original_quat * _local_quat(Vector3(-12.0, 0.0, 24.0))
 		4:
-			return original_quat * _local_quat(Vector3(-6.0, 0.0, -18.0))
+			return original_quat * _local_quat(Vector3(-12.0, 0.0, -24.0))
 		5:
-			return original_quat * _local_quat(Vector3(-10.0, 0.0, -20.0))
+			return original_quat * _local_quat(Vector3(-18.0, 0.0, -34.0))
 		_:
 			return original_quat
-
 
 func _build_attack_rotation(from_stance: int, original_quat: Quaternion) -> Quaternion:
 	match from_stance:
 		0:
 			return original_quat
 		1:
-			return original_quat * _local_quat(Vector3(58.0, 0.0, 14.0))
+			return original_quat * _local_quat(Vector3(84.0, 0.0, 20.0))
 		2:
-			return original_quat * _local_quat(Vector3(14.0, 0.0, -78.0))
+			return original_quat * _local_quat(Vector3(30.0, 0.0, -126.0))
 		3:
-			return original_quat * _local_quat(Vector3(12.0, 0.0, -52.0))
+			return original_quat * _local_quat(Vector3(20.0, 0.0, -76.0))
 		4:
-			return original_quat * _local_quat(Vector3(-12.0, 0.0, 52.0))
+			return original_quat * _local_quat(Vector3(20.0, 0.0, 76.0))
 		5:
-			return original_quat * _local_quat(Vector3(14.0, 0.0, 78.0))
+			return original_quat * _local_quat(Vector3(30.0, 0.0, 126.0))
 		_:
 			return original_quat
-
 
 func _local_quat(rot_degrees: Vector3) -> Quaternion:
 	return Quaternion.from_euler(Vector3(
@@ -321,15 +370,12 @@ func _on_attack_animation_finished_event(next_stance: int, final_pos: Vector3, f
 	is_attacking = false
 	attack_recovering = false
 	attack_recovery_timer = 0.0
-
 	can_attack = true
 	combat_ui.is_locked = false
 	melee_ray.enabled = false
-
 	current_stance_index = next_stance
 	target_stance_pos = final_pos
 	target_stance_rot = final_rot
-
 	stance_transitioning = false
 
 func _get_next_stance_after_attack(current: int) -> int:
