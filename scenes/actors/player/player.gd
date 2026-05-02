@@ -23,7 +23,7 @@ const STANCES = {
 	4: {"pos": Vector3(-0.6, -0.5, -1), "rot": Vector3(135, -90,  0)},  # BOTTOM_LEFT (Baixo-Esquerda)
 	5: {"pos": Vector3(-1, 0.5, -1), "rot": Vector3(45, -90, 0)}     # TOP_LEFT (Cima-Esquerda)
 }
-const DEFENSE_STANCE = {"pos": Vector3(0.7, 0.5, -0.2), "rot": Vector3(180, 0, 45)}
+const DEFENSE_STANCE = {"pos": Vector3(0.5, 0.3, -0.8), "rot": Vector3(180, 0, 45)}
 
 @onready var health_component: HealthComponent = $HealthComponent
 @onready var camera_pivot: Node3D = $CameraPivot
@@ -232,29 +232,29 @@ func _build_attack_pose(from_stance: int, original_pos: Vector3, original_quat: 
 		2: # TOP_RIGHT
 			return {
 				"windup_pos": original_pos + Vector3(0.14, 0.10, 0.18),
-				"windup_quat": original_quat * _local_quat(Vector3(0.0, 0.0, -15.0)),
-				"attack_pos": original_pos + Vector3(-1.30, -0.98, -0.95),
-				"attack_quat": original_quat * _local_quat(Vector3(0, 0.0, 125.0))
+				"windup_quat": original_quat * _local_quat(Vector3(-10.0, 0.0, -15.0)),
+				"attack_pos": original_pos + Vector3(-2.30, -2.0, -0.95),
+				"attack_quat": original_quat * _local_quat(Vector3(12.0, 0.0, 150.0))
 			}
 		3: # BOTTOM_RIGHT
 			return {
 				"windup_pos": original_pos + Vector3(0.12, -0.06, 0.14),
 				"windup_quat": original_quat * _local_quat(Vector3(-12.0, 0.0, -15.0)),
-				"attack_pos": original_pos + Vector3(-0.92, 0.76, -0.76),
+				"attack_pos": original_pos + Vector3(-2.30, 0.76, -0.76),
 				"attack_quat": original_quat * _local_quat(Vector3(18.0, 0.0, 150.0))
 			}
 		4: # BOTTOM_LEFT
 			return {
 				"windup_pos": original_pos + Vector3(-0.12, -0.06, 0.14),
-				"windup_quat": original_quat * _local_quat(Vector3(12.0, 0.0, -22.0)),
-				"attack_pos": original_pos + Vector3(0.92, 0.76, -0.76),
+				"windup_quat": original_quat * _local_quat(Vector3(5.0, 0.0, -15.0)),
+				"attack_pos": original_pos + Vector3(2.0, 1.5, -0.76),
 				"attack_quat": original_quat * _local_quat(Vector3(-18.0, 0.0, 150.0))
 			}
 		5: # TOP_LEFT
 			return {
 				"windup_pos": original_pos + Vector3(-0.14, 0.10, 0.18),
-				"windup_quat": original_quat * _local_quat(Vector3(12.0, 0.0, -22.0)),
-				"attack_pos": original_pos + Vector3(1.30, -0.98, -0.95),
+				"windup_quat": original_quat * _local_quat(Vector3(12.0, 0.0, -15.0)),
+				"attack_pos": original_pos + Vector3(2.30, -2.0, -0.95),
 				"attack_quat": original_quat * _local_quat(Vector3(18.0, 0.0, 150.0))
 			}
 		_:
@@ -266,11 +266,6 @@ func _build_attack_pose(from_stance: int, original_pos: Vector3, original_quat: 
 			}
 
 func _local_quat(rot_degrees: Vector3) -> Quaternion:
-	return Quaternion.from_euler(Vector3(
-		deg_to_rad(rot_degrees.x),
-		deg_to_rad(rot_degrees.y),
-		deg_to_rad(rot_degrees.z)
-	))
 	return Quaternion.from_euler(Vector3(
 		deg_to_rad(rot_degrees.x),
 		deg_to_rad(rot_degrees.y),

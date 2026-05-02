@@ -8,7 +8,7 @@ const WEAPON_ROTATION_TRACK := NodePath("../CameraPivot/Camera3D/WeaponPivot:qua
 const SELF_METHOD_TRACK := NodePath(".")
 const LIBRARY_NAME := StringName("runtime")
 const ANIMATION_NAME := StringName("weapon_attack_runtime")
-const ATTACK_SPEED_SCALE := 1.2
+const ATTACK_SPEED_SCALE: float = 1.0
 
 var _animation_player: AnimationPlayer
 var _impact_callback: Callable
