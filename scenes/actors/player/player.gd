@@ -215,47 +215,47 @@ func perform_attack() -> void:
 
 func _build_attack_pose(from_stance: int, original_pos: Vector3, original_quat: Quaternion) -> Dictionary:
 	match from_stance:
-		0:
+		0: # CENTER
 			return {
-				"windup_pos": original_pos + Vector3(0.0, 0.0, 0.40),
-				"windup_quat": original_quat * _local_quat(Vector3(-8.0, 0.0, 0.0)),
-				"attack_pos": original_pos + Vector3(0.0, 0.0, -2.5),
+				"windup_pos": original_pos + Vector3(0.0, 0.0, 0.0),
+				"windup_quat": original_quat * _local_quat(Vector3(8.0, 0.0, 0.0)),
+				"attack_pos": original_pos + Vector3(0.0, 0.0, 0.0),
 				"attack_quat": original_quat
 			}
-		1:
+		1: # TOP
 			return {
-				"windup_pos": original_pos + Vector3(0.0, 0.16, 0.20),
-				"windup_quat": original_quat * _local_quat(Vector3(-26.0, 0.0, 10.0)),
-				"attack_pos": original_pos + Vector3(0.0, -1.10, -0.95),
-				"attack_quat": original_quat * _local_quat(Vector3(78.0, 0.0, 18.0))
+				"windup_pos": original_pos + Vector3(0.0, 0.16, -1.20),
+				"windup_quat": original_quat * _local_quat(Vector3(0, 0.0, -5.0)),
+				"attack_pos": original_pos + Vector3(0.0, -2.10, -0.95),
+				"attack_quat": original_quat * _local_quat(Vector3(0, 0.0, 150.0))
 			}
 		2: # TOP_RIGHT
 			return {
 				"windup_pos": original_pos + Vector3(0.14, 0.10, 0.18),
-				"windup_quat": original_quat * _local_quat(Vector3(-18.0, 0.0, -34.0)),
+				"windup_quat": original_quat * _local_quat(Vector3(0.0, 0.0, -15.0)),
 				"attack_pos": original_pos + Vector3(-1.30, -0.98, -0.95),
-				"attack_quat": original_quat * _local_quat(Vector3(28.0, 0.0, 118.0))
+				"attack_quat": original_quat * _local_quat(Vector3(0, 0.0, 125.0))
 			}
 		3: # BOTTOM_RIGHT
 			return {
 				"windup_pos": original_pos + Vector3(0.12, -0.06, 0.14),
-				"windup_quat": original_quat * _local_quat(Vector3(-12.0, 0.0, -22.0)),
+				"windup_quat": original_quat * _local_quat(Vector3(-12.0, 0.0, -15.0)),
 				"attack_pos": original_pos + Vector3(-0.92, 0.76, -0.76),
-				"attack_quat": original_quat * _local_quat(Vector3(18.0, 0.0, 68.0))
+				"attack_quat": original_quat * _local_quat(Vector3(18.0, 0.0, 150.0))
 			}
 		4: # BOTTOM_LEFT
 			return {
 				"windup_pos": original_pos + Vector3(-0.12, -0.06, 0.14),
 				"windup_quat": original_quat * _local_quat(Vector3(12.0, 0.0, -22.0)),
 				"attack_pos": original_pos + Vector3(0.92, 0.76, -0.76),
-				"attack_quat": original_quat * _local_quat(Vector3(-18.0, 0.0, 68.0))
+				"attack_quat": original_quat * _local_quat(Vector3(-18.0, 0.0, 150.0))
 			}
 		5: # TOP_LEFT
 			return {
 				"windup_pos": original_pos + Vector3(-0.14, 0.10, 0.18),
-				"windup_quat": original_quat * _local_quat(Vector3(18.0, 0.0, -34.0)),
+				"windup_quat": original_quat * _local_quat(Vector3(12.0, 0.0, -22.0)),
 				"attack_pos": original_pos + Vector3(1.30, -0.98, -0.95),
-				"attack_quat": original_quat * _local_quat(Vector3(-28.0, 0.0, 118.0))
+				"attack_quat": original_quat * _local_quat(Vector3(18.0, 0.0, 150.0))
 			}
 		_:
 			return {
