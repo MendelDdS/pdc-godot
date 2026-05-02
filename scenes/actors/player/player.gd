@@ -232,30 +232,30 @@ func _build_attack_pose(from_stance: int, original_pos: Vector3, original_quat: 
 		2: # TOP_RIGHT
 			return {
 				"windup_pos": original_pos + Vector3(0.14, 0.10, 0.18),
-				"windup_quat": original_quat * _local_quat(Vector3(-18.0, 0.0, 34.0)),
+				"windup_quat": original_quat * _local_quat(Vector3(-18.0, 0.0, -34.0)),
 				"attack_pos": original_pos + Vector3(-1.30, -0.98, -0.95),
-				"attack_quat": original_quat * _local_quat(Vector3(28.0, 0.0, -118.0))
+				"attack_quat": original_quat * _local_quat(Vector3(28.0, 0.0, 118.0))
 			}
 		3: # BOTTOM_RIGHT
 			return {
 				"windup_pos": original_pos + Vector3(0.12, -0.06, 0.14),
-				"windup_quat": original_quat * _local_quat(Vector3(-12.0, 0.0, 22.0)),
+				"windup_quat": original_quat * _local_quat(Vector3(-12.0, 0.0, -22.0)),
 				"attack_pos": original_pos + Vector3(-0.92, 0.76, -0.76),
-				"attack_quat": original_quat * _local_quat(Vector3(18.0, 0.0, -68.0))
+				"attack_quat": original_quat * _local_quat(Vector3(18.0, 0.0, 68.0))
 			}
 		4: # BOTTOM_LEFT
 			return {
 				"windup_pos": original_pos + Vector3(-0.12, -0.06, 0.14),
-				"windup_quat": original_quat * _local_quat(Vector3(12.0, 0.0, 22.0)),
+				"windup_quat": original_quat * _local_quat(Vector3(12.0, 0.0, -22.0)),
 				"attack_pos": original_pos + Vector3(0.92, 0.76, -0.76),
-				"attack_quat": original_quat * _local_quat(Vector3(-18.0, 0.0, -68.0))
+				"attack_quat": original_quat * _local_quat(Vector3(-18.0, 0.0, 68.0))
 			}
 		5: # TOP_LEFT
 			return {
 				"windup_pos": original_pos + Vector3(-0.14, 0.10, 0.18),
-				"windup_quat": original_quat * _local_quat(Vector3(18.0, 0.0, 34.0)),
+				"windup_quat": original_quat * _local_quat(Vector3(18.0, 0.0, -34.0)),
 				"attack_pos": original_pos + Vector3(1.30, -0.98, -0.95),
-				"attack_quat": original_quat * _local_quat(Vector3(-28.0, 0.0, -118.0))
+				"attack_quat": original_quat * _local_quat(Vector3(-28.0, 0.0, 118.0))
 			}
 		_:
 			return {
@@ -264,74 +264,6 @@ func _build_attack_pose(from_stance: int, original_pos: Vector3, original_quat: 
 				"attack_pos": original_pos + Vector3(0.0, 0.0, -0.75),
 				"attack_quat": original_quat
 			}
-
-func _build_windup_position(from_stance: int, original_pos: Vector3) -> Vector3:
-	match from_stance:
-		0:
-			return original_pos + Vector3(0.0, 0.0, 0.40)
-		1:
-			return original_pos + Vector3(0.0, 0.16, 0.20)
-		2:
-			return original_pos + Vector3(0.14, 0.10, 0.18)
-		3:
-			return original_pos + Vector3(0.12, -0.06, 0.14)
-		4:
-			return original_pos + Vector3(-0.12, -0.06, 0.14)
-		5:
-			return original_pos + Vector3(-0.14, 0.10, 0.18)
-		_:
-			return original_pos + Vector3(0.0, 0.05, 0.15)
-
-func _build_attack_position(from_stance: int, original_pos: Vector3) -> Vector3:
-	match from_stance:
-		0:
-			return original_pos + Vector3(0.0, 0.0, -2.5)
-		1:
-			return original_pos + Vector3(0.0, -1.15, -1.05)
-		2:
-			return original_pos + Vector3(-1.38, -1.02, -1.00)
-		3:
-			return original_pos + Vector3(-0.98, 0.80, -0.80)
-		4:
-			return original_pos + Vector3(0.98, 0.80, -0.80)
-		5:
-			return original_pos + Vector3(1.38, -1.02, -1.00)
-		_:
-			return original_pos + Vector3(0.0, 0.0, -0.75)
-
-func _build_windup_rotation(from_stance: int, original_quat: Quaternion) -> Quaternion:
-	match from_stance:
-		0:
-			return original_quat * _local_quat(Vector3(-10.0, 0.0, 0.0))
-		1:
-			return original_quat * _local_quat(Vector3(-28.0, 0.0, 12.0))
-		2:
-			return original_quat * _local_quat(Vector3(-18.0, 0.0, 34.0))
-		3:
-			return original_quat * _local_quat(Vector3(-12.0, 0.0, 24.0))
-		4:
-			return original_quat * _local_quat(Vector3(-12.0, 0.0, -24.0))
-		5:
-			return original_quat * _local_quat(Vector3(-18.0, 0.0, -34.0))
-		_:
-			return original_quat
-
-func _build_attack_rotation(from_stance: int, original_quat: Quaternion) -> Quaternion:
-	match from_stance:
-		0:
-			return original_quat
-		1:
-			return original_quat * _local_quat(Vector3(84.0, 0.0, 20.0))
-		2:
-			return original_quat * _local_quat(Vector3(30.0, 0.0, -126.0))
-		3:
-			return original_quat * _local_quat(Vector3(20.0, 0.0, -76.0))
-		4:
-			return original_quat * _local_quat(Vector3(20.0, 0.0, 76.0))
-		5:
-			return original_quat * _local_quat(Vector3(30.0, 0.0, 126.0))
-		_:
-			return original_quat
 
 func _local_quat(rot_degrees: Vector3) -> Quaternion:
 	return Quaternion.from_euler(Vector3(
