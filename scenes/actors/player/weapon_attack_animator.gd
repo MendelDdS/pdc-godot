@@ -1,3 +1,5 @@
+# res://.../weapon_attack_animator.gd
+
 extends Node
 class_name WeaponAttackAnimator
 
@@ -6,7 +8,7 @@ const WEAPON_ROTATION_TRACK := NodePath("../CameraPivot/Camera3D/WeaponPivot:qua
 const SELF_METHOD_TRACK := NodePath(".")
 const LIBRARY_NAME := StringName("runtime")
 const ANIMATION_NAME := StringName("weapon_attack_runtime")
-const ATTACK_SPEED_SCALE := 2
+const ATTACK_SPEED_SCALE := 1.5
 
 var _animation_player: AnimationPlayer
 var _impact_callback: Callable
@@ -29,6 +31,7 @@ func play_attack(
 	attack_pos: Vector3,
 	attack_rot_quat: Quaternion,
 	final_pos: Vector3,
+	final_rot_degrees: Vector3,
 	final_rot_quat: Quaternion,
 	next_stance: int,
 	impact_dir: Vector3,
@@ -40,10 +43,11 @@ func play_attack(
 	_impact_dir = impact_dir
 	_next_stance = next_stance
 	_final_pos = final_pos
-	_final_rot = final_rot_quat.get_euler() * (180.0 / PI)
+	_final_rot = final_rot_degrees
 
 	if not _animation_player.has_animation_library(LIBRARY_NAME):
 		_animation_player.add_animation_library(LIBRARY_NAME, AnimationLibrary.new())
+
 	var animation_library := _animation_player.get_animation_library(LIBRARY_NAME)
 	if animation_library.has_animation(ANIMATION_NAME):
 		animation_library.remove_animation(ANIMATION_NAME)
@@ -51,25 +55,27 @@ func play_attack(
 	var anim := Animation.new()
 	anim.length = 0.90
 
+	var settle_pos := attack_pos.lerp(final_pos, 0.45)
+	var pre_end_pos := attack_pos.lerp(final_pos, 0.82)
+
 	var position_track := anim.add_track(Animation.TYPE_VALUE)
 	anim.track_set_path(position_track, WEAPON_POSITION_TRACK)
 	anim.track_set_interpolation_type(position_track, Animation.INTERPOLATION_CUBIC)
 	anim.track_insert_key(position_track, 0.0, original_pos)
 	anim.track_insert_key(position_track, 0.18, windup_pos)
 	anim.track_insert_key(position_track, 0.32, attack_pos)
-	# Pequeno follow-through para passar sensacao de peso.
-	anim.track_insert_key(position_track, 0.42, attack_pos.lerp(final_pos, 0.35))
-	anim.track_insert_key(position_track, 0.75, final_pos + Vector3(0.0, -0.02, 0.03))
+	anim.track_insert_key(position_track, 0.50, settle_pos)
+	anim.track_insert_key(position_track, 0.72, pre_end_pos)
 	anim.track_insert_key(position_track, 0.90, final_pos)
 
 	var rotation_track := anim.add_track(Animation.TYPE_VALUE)
 	anim.track_set_path(rotation_track, WEAPON_ROTATION_TRACK)
-	anim.track_set_interpolation_type(rotation_track, Animation.INTERPOLATION_CUBIC)
+	anim.track_set_interpolation_type(rotation_track, Animation.INTERPOLATION_LINEAR)
 	anim.track_insert_key(rotation_track, 0.0, original_rot_quat)
 	anim.track_insert_key(rotation_track, 0.18, windup_rot_quat)
 	anim.track_insert_key(rotation_track, 0.32, attack_rot_quat)
-	anim.track_insert_key(rotation_track, 0.42, attack_rot_quat.slerp(final_rot_quat, 0.35))
-	anim.track_insert_key(rotation_track, 0.75, final_rot_quat)
+	anim.track_insert_key(rotation_track, 0.72, attack_rot_quat)
+	anim.track_insert_key(rotation_track, 0.88, attack_rot_quat)
 	anim.track_insert_key(rotation_track, 0.90, final_rot_quat)
 
 	var method_track := anim.add_track(Animation.TYPE_METHOD)
