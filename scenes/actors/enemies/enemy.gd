@@ -1,11 +1,12 @@
 extends CharacterBody3D
 class_name Enemy
 
-enum State { IDLE, ATTACK, DEAD }
+enum State { IDLE, ATTACK, STUNNED, DEAD }
 
 @export var attack_damage: int = 10
 @export var attack_windup: float = 0.35
 @export var attack_cooldown: float = 1.0
+@export var stun_duration: float = 1.4
 
 @onready var health_component: HealthComponent = $HealthComponent
 @onready var body: MeshInstance3D = $EnemyBody
@@ -18,6 +19,7 @@ var body_material: StandardMaterial3D
 var base_body_color: Color = Color(1.0, 1.0, 1.0, 1.0)
 var attack_has_hit: bool = false
 var attack_target_cell: Vector2i
+var stun_timer: float = 0.0
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -45,6 +47,8 @@ func _physics_process(delta: float) -> void:
 				_start_attack()
 		State.ATTACK:
 			_process_attack(delta)
+		State.STUNNED:
+			_process_stunned(delta)
 
 func _start_attack() -> void:
 	state = State.ATTACK
@@ -68,9 +72,26 @@ func _apply_attack_hit() -> void:
 		return
 
 	if player.is_blocking():
-		player.play_block_impact_feedback()
+		if player.is_perfect_blocking():
+			player.play_perfect_block_impact_feedback()
+			stun(stun_duration)
+		else:
+			player.play_block_impact_feedback()
 	else:
 		player.health_component.take_damage(attack_damage)
+
+func stun(duration: float) -> void:
+	state = State.STUNNED
+	stun_timer = duration
+	cooldown_timer = attack_cooldown
+	_play_stun_feedback()
+
+func _process_stunned(delta: float) -> void:
+	stun_timer -= delta
+	if stun_timer <= 0.0:
+		body.rotation_degrees = Vector3.ZERO
+		state = State.IDLE
+		cooldown_timer = attack_cooldown
 
 func _is_player_in_front_tile() -> bool:
 	return _get_front_cell() == _world_to_cell(player.global_position)
@@ -104,6 +125,14 @@ func _play_damage_feedback() -> void:
 
 	var tween := create_tween()
 	tween.tween_property(body_material, "albedo_color", base_body_color, 0.18)
+
+func _play_stun_feedback() -> void:
+	var tween := create_tween()
+	tween.set_loops(4)
+	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(body, "rotation_degrees", Vector3(0.0, 0.0, 7.0), 0.12)
+	tween.tween_property(body, "rotation_degrees", Vector3(0.0, 0.0, -7.0), 0.12)
+	tween.tween_property(body, "rotation_degrees", Vector3.ZERO, 0.08)
 
 func _world_to_cell(world_pos: Vector3) -> Vector2i:
 	return Vector2i(

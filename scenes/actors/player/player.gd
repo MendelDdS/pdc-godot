@@ -9,10 +9,14 @@ const HEAD_BOB_FREQ: float = 8.0
 const HEAD_BOB_AMP: float = 0.08
 const TILT_AMOUNT: float = 2.5
 const STANCE_TRANSITION_DURATION: float = 0.22
+const DEFENSE_TRANSITION_SPEED: float = 28.0
 const STANCE_ROTATE_SPEED: float = 12.0
 const STANCE_ARC_HEIGHT: float = 0.28
 const BOTTOM_CROSS_TRANSITION_DURATION: float = 0.45
 const BOTTOM_CROSS_ARC_HEIGHT: float = 0.85
+const PERFECT_BLOCK_WINDOW: float = 0.22
+const DEFENSE_READY_DISTANCE: float = 0.04
+const DEFENSE_READY_ROT_DOT: float = 0.995
 
 const SWORD_SCENE = preload("res://scenes/actors/items/simple_sword.tscn")
 const STANCES = {
@@ -49,6 +53,9 @@ var target_stance_pos: Vector3 = STANCES[0]["pos"]
 var target_stance_rot: Vector3 = STANCES[0]["rot"]
 var is_attacking: bool = false
 var is_defending: bool = false
+var block_started_msec: int = -100000
+var block_ready_msec: int = -100000
+var defense_pose_ready: bool = false
 var can_attack: bool = true
 var stance_transitioning: bool = false
 var stance_from_index: int = 0
@@ -93,13 +100,27 @@ func _input(event: InputEvent) -> void:
 		_toggle_mouse_capture()
 
 func handle_combat_input() -> void:
+	if Input.is_action_just_pressed("Item Passive"):
+		block_started_msec = Time.get_ticks_msec()
+		block_ready_msec = -100000
+		defense_pose_ready = false
+
 	is_defending = Input.is_action_pressed("Item Passive")
+	if not is_defending:
+		defense_pose_ready = false
 
 	if Input.is_action_just_pressed("Item Action") and can_attack and not is_defending:
 		perform_attack()
 
 func is_blocking() -> bool:
 	return is_defending
+
+func is_perfect_blocking() -> bool:
+	if not is_defending or not defense_pose_ready:
+		return false
+
+	var elapsed := float(Time.get_ticks_msec() - block_ready_msec) / 1000.0
+	return elapsed <= PERFECT_BLOCK_WINDOW
 
 func play_block_impact_feedback() -> void:
 	var original_pos := weapon_pivot.position
@@ -122,6 +143,20 @@ func play_block_impact_feedback() -> void:
 	tween.tween_property(weapon_pivot, "position", original_pos, 0.13).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tween.parallel().tween_property(weapon_pivot, "quaternion", original_quat, 0.13).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
+func play_perfect_block_impact_feedback() -> void:
+	var original_pos := weapon_pivot.position
+	var original_quat := weapon_pivot.quaternion
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(weapon_pivot, "position", original_pos + Vector3(0.03, 0.01, 0.08), 0.025)
+	tween.parallel().tween_property(weapon_pivot, "quaternion", original_quat * _local_quat(Vector3(-4.0, 0.0, 8.0)), 0.025)
+	tween.tween_property(weapon_pivot, "position", original_pos + Vector3(-0.03, -0.01, 0.06), 0.025)
+	tween.parallel().tween_property(weapon_pivot, "quaternion", original_quat * _local_quat(Vector3(4.0, 0.0, -8.0)), 0.025)
+	tween.tween_property(weapon_pivot, "position", original_pos + Vector3(0.02, 0.02, 0.04), 0.025)
+	tween.parallel().tween_property(weapon_pivot, "quaternion", original_quat * _local_quat(Vector3(-2.0, 0.0, 5.0)), 0.025)
+	tween.tween_property(weapon_pivot, "position", original_pos, 0.06)
+	tween.parallel().tween_property(weapon_pivot, "quaternion", original_quat, 0.06)
+
 func _update_attack_recovery(delta: float) -> void:
 	if not attack_recovering:
 		return
@@ -140,6 +175,8 @@ func update_weapon_stance(delta: float) -> void:
 	if is_defending:
 		base_target_pos = DEFENSE_STANCE["pos"]
 		base_target_quat = _degrees_to_quat(DEFENSE_STANCE["rot"])
+		if stance_transitioning:
+			stance_transitioning = false
 
 	if stance_transitioning:
 		var is_arc := _is_bottom_cross_transition(stance_from_index, stance_to_index) and not is_defending
@@ -167,12 +204,19 @@ func update_weapon_stance(delta: float) -> void:
 		if progress >= 1.0:
 			stance_transitioning = false
 	else:
-		weapon_pivot.position = weapon_pivot.position.lerp(base_target_pos, clampf(delta * STANCE_ROTATE_SPEED, 0.0, 1.0))
+		var rotate_speed := DEFENSE_TRANSITION_SPEED if is_defending else STANCE_ROTATE_SPEED
+		weapon_pivot.position = weapon_pivot.position.lerp(base_target_pos, clampf(delta * rotate_speed, 0.0, 1.0))
 		weapon_pivot.quaternion = _slerp_short(
 			weapon_pivot.quaternion,
 			base_target_quat,
-			clampf(delta * STANCE_ROTATE_SPEED, 0.0, 1.0)
+			clampf(delta * rotate_speed, 0.0, 1.0)
 		)
+		if is_defending and not defense_pose_ready:
+			var position_ready := weapon_pivot.position.distance_to(base_target_pos) <= DEFENSE_READY_DISTANCE
+			var rotation_ready := absf(weapon_pivot.quaternion.dot(base_target_quat)) >= DEFENSE_READY_ROT_DOT
+			if position_ready and rotation_ready:
+				defense_pose_ready = true
+				block_ready_msec = Time.get_ticks_msec()
 
 func perform_attack() -> void:
 	if is_attacking or not can_attack:
