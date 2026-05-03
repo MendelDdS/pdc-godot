@@ -73,6 +73,7 @@ func _apply_attack_hit() -> void:
 
 	if player.is_blocking():
 		if player.is_perfect_blocking():
+			player.open_critical_attack_window()
 			player.play_perfect_block_impact_feedback()
 			stun(stun_duration)
 		else:
@@ -120,11 +121,31 @@ func on_hit_by_player(attacker: Player) -> void:
 	_look_at_flat(player.global_position)
 	_play_damage_feedback()
 
+func on_critical_hit_by_player(attacker: Player) -> void:
+	player = attacker
+	_look_at_flat(player.global_position)
+	_play_critical_damage_feedback()
+
 func _play_damage_feedback() -> void:
 	body_material.albedo_color = Color(1.0, 0.1, 0.1, 1.0)
 
 	var tween := create_tween()
 	tween.tween_property(body_material, "albedo_color", base_body_color, 0.18)
+
+func _play_critical_damage_feedback() -> void:
+	body_material.albedo_color = Color(1.0, 0.85, 0.25, 1.0)
+
+	var original_pos := global_position
+	var original_body_rot := body.rotation_degrees
+	var recoil_pos := original_pos + (global_transform.basis.z.normalized() * Constants.TILE_SIZE * 0.28)
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "global_position", recoil_pos, 0.08)
+	tween.parallel().tween_property(body, "rotation_degrees", original_body_rot + Vector3(-10.0, 0.0, 13.0), 0.08)
+	tween.parallel().tween_property(body_material, "albedo_color", base_body_color, 0.32)
+	tween.tween_property(self, "global_position", original_pos, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(body, "rotation_degrees", original_body_rot + Vector3(4.0, 0.0, -6.0), 0.08)
+	tween.tween_property(body, "rotation_degrees", original_body_rot, 0.10).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 func _play_stun_feedback() -> void:
 	var tween := create_tween()

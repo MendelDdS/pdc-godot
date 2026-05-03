@@ -15,6 +15,9 @@ const STANCE_ARC_HEIGHT: float = 0.28
 const BOTTOM_CROSS_TRANSITION_DURATION: float = 0.45
 const BOTTOM_CROSS_ARC_HEIGHT: float = 0.85
 const PERFECT_BLOCK_WINDOW: float = 0.22
+const CRITICAL_ATTACK_WINDOW: float = 1.2
+const NORMAL_ATTACK_DAMAGE: int = 20
+const CRITICAL_ATTACK_DAMAGE: int = 60
 const DEFENSE_READY_DISTANCE: float = 0.04
 const DEFENSE_READY_ROT_DOT: float = 0.995
 
@@ -56,6 +59,8 @@ var is_defending: bool = false
 var block_started_msec: int = -100000
 var block_ready_msec: int = -100000
 var defense_pose_ready: bool = false
+var critical_attack_until_msec: int = -100000
+var active_attack_is_critical: bool = false
 var can_attack: bool = true
 var stance_transitioning: bool = false
 var stance_from_index: int = 0
@@ -121,6 +126,19 @@ func is_perfect_blocking() -> bool:
 
 	var elapsed := float(Time.get_ticks_msec() - block_ready_msec) / 1000.0
 	return elapsed <= PERFECT_BLOCK_WINDOW
+
+func open_critical_attack_window() -> void:
+	critical_attack_until_msec = Time.get_ticks_msec() + int(CRITICAL_ATTACK_WINDOW * 1000.0)
+
+func _has_critical_attack_window() -> bool:
+	return Time.get_ticks_msec() <= critical_attack_until_msec
+
+func _consume_critical_attack_window() -> bool:
+	if not _has_critical_attack_window():
+		return false
+
+	critical_attack_until_msec = -100000
+	return true
 
 func play_block_impact_feedback() -> void:
 	var original_pos := weapon_pivot.position
@@ -224,6 +242,7 @@ func perform_attack() -> void:
 		
 	is_attacking = true
 	can_attack = false
+	active_attack_is_critical = _consume_critical_attack_window()
 	combat_ui.is_locked = true
 	melee_ray.enabled = true
 	
@@ -265,6 +284,9 @@ func perform_attack() -> void:
 	var min_required_lunge_z := original_pos.z - (2.5 if is_thrust else 0.35)
 	windup_pos.z = min(windup_pos.z, max_allowed_pullback_z)
 	attack_pos.z = min(attack_pos.z, min_required_lunge_z)
+	if active_attack_is_critical:
+		attack_pos.z -= 0.45
+		camera_kick_dir *= 1.6
 
 	weapon_attack_animator.play_attack(
 		original_pos,
@@ -359,6 +381,8 @@ func _degrees_to_quat(rot_degrees: Vector3) -> Quaternion:
 
 func _on_attack_impact_event(camera_kick_dir: Vector3) -> void:
 	_apply_camera_feedback(camera_kick_dir)
+	if active_attack_is_critical:
+		_play_critical_attack_feedback()
 	_check_hit()
 
 func _on_attack_animation_finished_event(next_stance: int, final_pos: Vector3, final_rot: Vector3) -> void:
@@ -368,6 +392,7 @@ func _on_attack_animation_finished_event(next_stance: int, final_pos: Vector3, f
 	can_attack = true
 	combat_ui.is_locked = false
 	melee_ray.enabled = false
+	active_attack_is_critical = false
 	current_stance_index = next_stance
 	target_stance_pos = final_pos
 	target_stance_rot = final_rot
@@ -401,9 +426,11 @@ func _check_hit() -> void:
 		if health:
 			print("Dealing damage to ", target.name)
 			var hit_owner = health.get_parent()
-			if hit_owner and hit_owner.has_method("on_hit_by_player"):
+			if active_attack_is_critical and hit_owner and hit_owner.has_method("on_critical_hit_by_player"):
+				hit_owner.on_critical_hit_by_player(self)
+			elif hit_owner and hit_owner.has_method("on_hit_by_player"):
 				hit_owner.on_hit_by_player(self)
-			health.take_damage(20)
+			health.take_damage(CRITICAL_ATTACK_DAMAGE if active_attack_is_critical else NORMAL_ATTACK_DAMAGE)
 
 func instantiate_weapon(weapon_scene: PackedScene) -> void:
 	if current_weapon:
@@ -565,3 +592,15 @@ func _play_damage_camera_shake() -> void:
 	tween.tween_property(camera, "rotation_degrees", original_rot + Vector3(1.5, -1.0, 1.0), 0.04)
 	tween.tween_property(camera, "rotation_degrees", original_rot + Vector3(-0.8, 0.5, -0.5), 0.035)
 	tween.tween_property(camera, "rotation_degrees", original_rot, 0.09).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+func _play_critical_attack_feedback() -> void:
+	var original_rot := camera.rotation_degrees
+	var original_fov := camera.fov
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(camera, "rotation_degrees", original_rot + Vector3(-5.0, 3.8, -3.2), 0.025)
+	tween.parallel().tween_property(camera, "fov", original_fov + 6.0, 0.025)
+	tween.tween_property(camera, "rotation_degrees", original_rot + Vector3(4.2, -3.0, 2.8), 0.035)
+	tween.tween_property(camera, "rotation_degrees", original_rot + Vector3(-2.4, 1.6, -1.6), 0.03)
+	tween.tween_property(camera, "rotation_degrees", original_rot, 0.13).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(camera, "fov", original_fov, 0.13).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
