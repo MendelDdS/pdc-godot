@@ -98,6 +98,22 @@ func handle_combat_input() -> void:
 	if Input.is_action_just_pressed("Item Action") and can_attack and not is_defending:
 		perform_attack()
 
+func is_blocking() -> bool:
+	return is_defending
+
+func play_block_impact_feedback() -> void:
+	var original_pos := weapon_pivot.position
+	var original_quat := weapon_pivot.quaternion
+	var impact_pos := original_pos + Vector3(0.0, 0.04, 0.18)
+	var impact_quat := original_quat * _local_quat(Vector3(-8.0, 0.0, 5.0))
+
+	var tween := create_tween().set_parallel(true)
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(weapon_pivot, "position", impact_pos, 0.08)
+	tween.tween_property(weapon_pivot, "quaternion", impact_quat, 0.08)
+	tween.chain().tween_property(weapon_pivot, "position", original_pos, 0.14)
+	tween.tween_property(weapon_pivot, "quaternion", original_quat, 0.14)
+
 func _update_attack_recovery(delta: float) -> void:
 	if not attack_recovering:
 		return
@@ -462,7 +478,7 @@ func _toggle_mouse_capture() -> void:
 
 func _on_died() -> void:
 	print(player_name + " died!")
-	queue_free()
+	#queue_free()
 
 func _on_health_changed() -> void:
 	print("Cura recebida! HP: ", health_component.current_health)

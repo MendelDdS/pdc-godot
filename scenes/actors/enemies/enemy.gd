@@ -1,35 +1,126 @@
 extends CharacterBody3D
+class_name Enemy
+
+enum State { IDLE, ATTACK, DEAD }
+
+@export var attack_damage: int = 10
+@export var attack_windup: float = 0.35
+@export var attack_cooldown: float = 1.0
 
 @onready var health_component: HealthComponent = $HealthComponent
+@onready var body: MeshInstance3D = $EnemyBody
 
-const SPEED = 5.0
-const JUMP_VELOCITY = 4.5
+var state: State = State.IDLE
+var player: Player
+var attack_timer: float = 0.0
+var cooldown_timer: float = 0.0
+var body_material: StandardMaterial3D
+var base_body_color: Color = Color(1.0, 1.0, 1.0, 1.0)
+var attack_has_hit: bool = false
+var attack_target_cell: Vector2i
 
 func _ready() -> void:
 	health_component.entity_died.connect(_enemy_died)
+	health_component.damage_taken.connect(_on_damage_taken)
+	player = _find_player()
+	body_material = StandardMaterial3D.new()
+	body_material.albedo_color = base_body_color
+	body.material_override = body_material
 
 func _physics_process(delta: float) -> void:
-	# Add the gravity.
-	if not is_on_floor():
-		velocity += get_gravity() * delta
+	if state == State.DEAD:
+		return
 
-	# Handle jump.
-	if Input.is_action_just_pressed("ui_accept") and is_on_floor():
-		velocity.y = JUMP_VELOCITY
+	if player == null or not is_instance_valid(player):
+		player = _find_player()
+		return
 
-	# Get the input direction and handle the movement/deceleration.
-	# As good practice, you should replace UI actions with custom gameplay actions.
-	var input_dir := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
-	var direction := (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
-	if direction:
-		velocity.x = direction.x * SPEED
-		velocity.z = direction.z * SPEED
+	if cooldown_timer > 0.0:
+		cooldown_timer -= delta
+
+	match state:
+		State.IDLE:
+			if cooldown_timer <= 0.0 and _is_player_in_front_tile():
+				_start_attack()
+		State.ATTACK:
+			_process_attack(delta)
+
+func _start_attack() -> void:
+	state = State.ATTACK
+	attack_timer = attack_windup
+	attack_has_hit = false
+	attack_target_cell = _get_front_cell()
+	_play_attack_feedback()
+
+func _process_attack(delta: float) -> void:
+	attack_timer -= delta
+	if not attack_has_hit and attack_timer <= attack_windup * 0.55:
+		attack_has_hit = true
+		_apply_attack_hit()
+
+	if attack_timer <= 0.0:
+		state = State.IDLE
+		cooldown_timer = attack_cooldown
+
+func _apply_attack_hit() -> void:
+	if _world_to_cell(player.global_position) != attack_target_cell:
+		return
+
+	if player.is_blocking():
+		player.play_block_impact_feedback()
 	else:
-		velocity.x = move_toward(velocity.x, 0, SPEED)
-		velocity.z = move_toward(velocity.z, 0, SPEED)
+		player.health_component.take_damage(attack_damage)
 
-	move_and_slide()
+func _is_player_in_front_tile() -> bool:
+	return _get_front_cell() == _world_to_cell(player.global_position)
 
-func _enemy_died():
-	print("AAAH! I died...")
+func _get_front_cell() -> Vector2i:
+	var front_pos := global_position + (-global_transform.basis.z.normalized() * Constants.TILE_SIZE)
+	return _world_to_cell(front_pos)
+
+func _play_attack_feedback() -> void:
+	var origin := global_position
+	var hit_pos := origin + (-global_transform.basis.z.normalized() * Constants.TILE_SIZE * 0.18)
+
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "global_position", hit_pos, attack_windup * 0.45)
+	tween.tween_property(self, "global_position", origin, attack_windup * 0.55)
+
+func _on_damage_taken() -> void:
+	if player != null and is_instance_valid(player):
+		_look_at_flat(player.global_position)
+
+	body_material.albedo_color = Color(1.0, 0.1, 0.1, 1.0)
+
+	var tween := create_tween()
+	tween.tween_property(body_material, "albedo_color", base_body_color, 0.18)
+
+func _world_to_cell(world_pos: Vector3) -> Vector2i:
+	return Vector2i(
+		roundi(world_pos.x / Constants.TILE_SIZE),
+		roundi(world_pos.z / Constants.TILE_SIZE)
+	)
+
+func _look_at_flat(target_pos: Vector3) -> void:
+	var look_target := Vector3(target_pos.x, global_position.y, target_pos.z)
+	if global_position.distance_squared_to(look_target) > 0.01:
+		look_at(look_target, Vector3.UP)
+
+func _find_player() -> Player:
+	return _find_player_in(get_tree().current_scene)
+
+func _find_player_in(node: Node) -> Player:
+	if node is Player:
+		return node
+
+	for child in node.get_children():
+		var found := _find_player_in(child)
+		if found != null:
+			return found
+
+	return null
+
+func _enemy_died() -> void:
+	state = State.DEAD
 	queue_free()
