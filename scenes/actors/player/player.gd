@@ -104,15 +104,23 @@ func is_blocking() -> bool:
 func play_block_impact_feedback() -> void:
 	var original_pos := weapon_pivot.position
 	var original_quat := weapon_pivot.quaternion
-	var impact_pos := original_pos + Vector3(0.0, 0.04, 0.18)
-	var impact_quat := original_quat * _local_quat(Vector3(-8.0, 0.0, 5.0))
+	var recoil_pos := original_pos + Vector3(0.04, 0.05, 0.24)
+	var recoil_quat := original_quat * _local_quat(Vector3(-12.0, 4.0, 9.0))
+	var rattle_pos_a := original_pos + Vector3(-0.03, 0.03, 0.14)
+	var rattle_quat_a := original_quat * _local_quat(Vector3(-6.0, -3.0, -7.0))
+	var rattle_pos_b := original_pos + Vector3(0.02, 0.01, 0.10)
+	var rattle_quat_b := original_quat * _local_quat(Vector3(4.0, 2.0, 5.0))
 
-	var tween := create_tween().set_parallel(true)
+	var tween := create_tween()
 	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(weapon_pivot, "position", impact_pos, 0.08)
-	tween.tween_property(weapon_pivot, "quaternion", impact_quat, 0.08)
-	tween.chain().tween_property(weapon_pivot, "position", original_pos, 0.14)
-	tween.tween_property(weapon_pivot, "quaternion", original_quat, 0.14)
+	tween.tween_property(weapon_pivot, "position", recoil_pos, 0.055)
+	tween.parallel().tween_property(weapon_pivot, "quaternion", recoil_quat, 0.055)
+	tween.tween_property(weapon_pivot, "position", rattle_pos_a, 0.045)
+	tween.parallel().tween_property(weapon_pivot, "quaternion", rattle_quat_a, 0.045)
+	tween.tween_property(weapon_pivot, "position", rattle_pos_b, 0.04)
+	tween.parallel().tween_property(weapon_pivot, "quaternion", rattle_quat_b, 0.04)
+	tween.tween_property(weapon_pivot, "position", original_pos, 0.13).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(weapon_pivot, "quaternion", original_quat, 0.13).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 func _update_attack_recovery(delta: float) -> void:
 	if not attack_recovering:
@@ -348,6 +356,9 @@ func _check_hit() -> void:
 
 		if health:
 			print("Dealing damage to ", target.name)
+			var hit_owner = health.get_parent()
+			if hit_owner and hit_owner.has_method("on_hit_by_player"):
+				hit_owner.on_hit_by_player(self)
 			health.take_damage(20)
 
 func instantiate_weapon(weapon_scene: PackedScene) -> void:
@@ -412,12 +423,13 @@ func handle_movement_input() -> void:
 		turn(-90)
 
 func move_in_direction(direction: Vector3, ray: RayCast3D, is_strafe: bool = false, strafe_dir: int = 0) -> void:
-	if ray.is_colliding():
+	var target_pos = global_position + direction.normalized() * Constants.TILE_SIZE
+
+	if ray.is_colliding() || _has_enemy_on_tile(target_pos):
 		play_wall_bump_animation(direction)
 		return
 
 	is_moving = true
-	var target_pos = global_position + direction.normalized() * Constants.TILE_SIZE
 
 	var tween = create_tween().set_parallel(true)
 	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
@@ -430,6 +442,20 @@ func move_in_direction(direction: Vector3, ray: RayCast3D, is_strafe: bool = fal
 		tween.chain().tween_property(camera, "rotation:z", 0.0, MOVE_DURATION * 0.5)
 
 	tween.chain().tween_callback(func(): is_moving = false)
+
+func _has_enemy_on_tile(target_pos: Vector3) -> bool:
+	var target_cell := _world_to_cell(target_pos)
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if enemy.has_method("get_current_cell") and enemy.get_current_cell() == target_cell:
+			return true
+
+	return false
+
+func _world_to_cell(world_pos: Vector3) -> Vector2i:
+	return Vector2i(
+		floori(world_pos.x / Constants.TILE_SIZE),
+		floori(world_pos.z / Constants.TILE_SIZE)
+	)
 
 func turn(angle_degrees: float) -> void:
 	is_rotating = true
@@ -485,3 +511,13 @@ func _on_health_changed() -> void:
 
 func _on_take_damage() -> void:
 	print("Dano recebido! HP: ", health_component.current_health)
+	_play_damage_camera_shake()
+
+func _play_damage_camera_shake() -> void:
+	var original_rot := camera.rotation_degrees
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(camera, "rotation_degrees", original_rot + Vector3(-2.0, 1.4, -1.2), 0.035)
+	tween.tween_property(camera, "rotation_degrees", original_rot + Vector3(1.5, -1.0, 1.0), 0.04)
+	tween.tween_property(camera, "rotation_degrees", original_rot + Vector3(-0.8, 0.5, -0.5), 0.035)
+	tween.tween_property(camera, "rotation_degrees", original_rot, 0.09).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)

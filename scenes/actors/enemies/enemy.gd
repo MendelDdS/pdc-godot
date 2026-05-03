@@ -20,6 +20,7 @@ var attack_has_hit: bool = false
 var attack_target_cell: Vector2i
 
 func _ready() -> void:
+	add_to_group("enemies")
 	health_component.entity_died.connect(_enemy_died)
 	health_component.damage_taken.connect(_on_damage_taken)
 	player = _find_player()
@@ -91,6 +92,14 @@ func _on_damage_taken() -> void:
 	if player != null and is_instance_valid(player):
 		_look_at_flat(player.global_position)
 
+	_play_damage_feedback()
+
+func on_hit_by_player(attacker: Player) -> void:
+	player = attacker
+	_look_at_flat(player.global_position)
+	_play_damage_feedback()
+
+func _play_damage_feedback() -> void:
 	body_material.albedo_color = Color(1.0, 0.1, 0.1, 1.0)
 
 	var tween := create_tween()
@@ -98,14 +107,18 @@ func _on_damage_taken() -> void:
 
 func _world_to_cell(world_pos: Vector3) -> Vector2i:
 	return Vector2i(
-		roundi(world_pos.x / Constants.TILE_SIZE),
-		roundi(world_pos.z / Constants.TILE_SIZE)
+		floori(world_pos.x / Constants.TILE_SIZE),
+		floori(world_pos.z / Constants.TILE_SIZE)
 	)
+
+func get_current_cell() -> Vector2i:
+	return _world_to_cell(global_position)
 
 func _look_at_flat(target_pos: Vector3) -> void:
 	var look_target := Vector3(target_pos.x, global_position.y, target_pos.z)
 	if global_position.distance_squared_to(look_target) > 0.01:
 		look_at(look_target, Vector3.UP)
+		cooldown_timer = attack_cooldown
 
 func _find_player() -> Player:
 	return _find_player_in(get_tree().current_scene)

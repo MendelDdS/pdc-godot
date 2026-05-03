@@ -8,6 +8,12 @@
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_tiqlc"]
 height = 2.755
 
+[sub_resource type="PrismMesh" id="PrismMesh_tiqlc"]
+size = Vector3(0.2, 0.2, 0.2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_6sec6"]
+albedo_color = Color(1, 0, 0, 1)
+
 [node name="Enemy" type="CharacterBody3D" unique_id=996212000]
 collision_layer = 2
 script = ExtResource("1_tiqlc")
@@ -21,3 +27,13 @@ mesh = SubResource("CapsuleMesh_gejs6")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1120864563]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 shape = SubResource("CapsuleShape3D_tiqlc")
+
+[node name="RightEye" type="MeshInstance3D" parent="." unique_id=661045755]
+transform = Transform3D(0.70710677, -0.70710677, 0, 0.70710677, 0.70710677, 0, 0, 0, 1, -0.18413484, 1.3892667, -0.59307414)
+mesh = SubResource("PrismMesh_tiqlc")
+surface_material_override/0 = SubResource("StandardMaterial3D_6sec6")
+
+[node name="LeftEye" type="MeshInstance3D" parent="." unique_id=1364996255]
+transform = Transform3D(0.70710677, 0.70710677, 0, -0.70710677, 0.70710677, 0, 0, 0, 1, 0.163, 1.389, -0.598)
+mesh = SubResource("PrismMesh_tiqlc")
+surface_material_override/0 = SubResource("StandardMaterial3D_6sec6")
