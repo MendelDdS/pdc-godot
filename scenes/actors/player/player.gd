@@ -25,7 +25,7 @@ const DEFAULT_CRITICAL_ATTACK_DAMAGE: int = 60
 const DEFENSE_READY_DISTANCE: float = 0.04
 const DEFENSE_READY_ROT_DOT: float = 0.995
 const MAGIC_SEQUENCE_MAX_AGE: float = 1.4
-const MAGIC_CRITICAL_MAX_TIME: float = 0.85
+const MAGIC_CRITICAL_MAX_TIME: float = 0.2
 const MAGIC_SPELL_PATTERNS: Array[Array] = [
 	[5, 1, 2],
 	[1, 2, 3],
@@ -45,6 +45,7 @@ const STANCES = {
 const DEFENSE_STANCE = {"pos": Vector3(0.5, 0.3, -0.8), "rot": Vector3(180, 0, 45)}
 const STAFF_IDLE_STANCE = {"pos": Vector3(0.72, -0.12, -1.0), "rot": Vector3(10, -90, 25)}
 const STAFF_DRAW_DISTANCE: float = 0.18
+const STAFF_DRAW_DURATION: float = 0.16
 
 @onready var health_component: HealthComponent = $HealthComponent
 @onready var camera_pivot: Node3D = $CameraPivot
@@ -78,6 +79,7 @@ var critical_attack_until_msec: int = -100000
 var active_attack_is_critical: bool = false
 var queued_magic_is_critical: bool = false
 var magic_drawing: bool = false
+var magic_draw_started_msec: int = 0
 var magic_sequence: Array[int] = []
 var magic_sequence_times: Array[int] = []
 var can_attack: bool = true
@@ -178,6 +180,7 @@ func _start_magic_draw() -> void:
 		return
 
 	magic_drawing = true
+	magic_draw_started_msec = Time.get_ticks_msec()
 	magic_sequence.clear()
 	magic_sequence_times.clear()
 	_record_magic_direction(combat_ui.current_direction)
@@ -186,17 +189,22 @@ func _finish_magic_draw() -> void:
 	magic_drawing = false
 	if magic_sequence.is_empty():
 		combat_ui.clear_magic_trace()
+		_return_staff_to_idle()
 		return
 
-	var now := Time.get_ticks_msec()
-	_prune_magic_sequence(now)
-	var valid_cast := _matches_magic_spell_pattern()
-	queued_magic_is_critical = valid_cast and _magic_sequence_duration() <= MAGIC_CRITICAL_MAX_TIME
+	var released_msec := Time.get_ticks_msec()
+	var matched_pattern_start := _get_matched_magic_pattern_start()
+	var valid_cast := matched_pattern_start >= 0
+	var cast_duration := _magic_sequence_duration_from(matched_pattern_start, released_msec) if valid_cast else 999.0
+	queued_magic_is_critical = valid_cast and cast_duration <= MAGIC_CRITICAL_MAX_TIME
+	print("Magic sequence drawn: ", magic_sequence, " duration: ", cast_duration, " max: ", MAGIC_CRITICAL_MAX_TIME, " critical: ", queued_magic_is_critical)
+
 	magic_sequence.clear()
 	magic_sequence_times.clear()
 	combat_ui.clear_magic_trace()
 
 	if not valid_cast:
+		_return_staff_to_idle()
 		_play_magic_fizzle_feedback()
 		return
 
@@ -207,15 +215,18 @@ func _record_magic_direction(dir_index: int) -> void:
 		return
 
 	var now := Time.get_ticks_msec()
-	_prune_magic_sequence(now)
 	if magic_sequence.size() > 0 and magic_sequence[-1] == dir_index:
+		return
+
+	if magic_sequence.size() > 1 and magic_sequence[-2] == dir_index:
+		magic_sequence.pop_back()
+		magic_sequence_times.pop_back()
+		combat_ui.set_magic_trace(magic_sequence)
+		_play_staff_draw_motion(dir_index)
 		return
 
 	magic_sequence.append(dir_index)
 	magic_sequence_times.append(now)
-	if magic_sequence.size() > 4:
-		magic_sequence.pop_front()
-		magic_sequence_times.pop_front()
 
 	combat_ui.set_magic_trace(magic_sequence)
 	_play_staff_draw_motion(dir_index)
@@ -227,8 +238,14 @@ func _play_staff_draw_motion(dir_index: int) -> void:
 
 	var tween := create_tween().set_parallel(true)
 	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tween.tween_property(weapon_pivot, "position", target_pos, 0.08)
-	tween.tween_property(weapon_pivot, "quaternion", target_quat, 0.08)
+	tween.tween_property(weapon_pivot, "position", target_pos, STAFF_DRAW_DURATION)
+	tween.tween_property(weapon_pivot, "quaternion", target_quat, STAFF_DRAW_DURATION)
+
+func _return_staff_to_idle() -> void:
+	var tween := create_tween().set_parallel(true)
+	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(weapon_pivot, "position", STAFF_IDLE_STANCE["pos"], 0.12)
+	tween.tween_property(weapon_pivot, "quaternion", _degrees_to_quat(STAFF_IDLE_STANCE["rot"]), 0.12)
 
 func _magic_direction_offset(dir_index: int) -> Vector2:
 	match dir_index:
@@ -245,14 +262,6 @@ func _magic_direction_offset(dir_index: int) -> Vector2:
 		_:
 			return Vector2.ZERO
 
-func _consume_magic_critical_cast() -> bool:
-	var now := Time.get_ticks_msec()
-	_prune_magic_sequence(now)
-	var is_critical := _matches_magic_spell_pattern() and _magic_sequence_duration() <= MAGIC_CRITICAL_MAX_TIME
-	magic_sequence.clear()
-	magic_sequence_times.clear()
-	return is_critical
-
 func _prune_magic_sequence(now: int) -> void:
 	while magic_sequence_times.size() > 0:
 		var age := float(now - magic_sequence_times[0]) / 1000.0
@@ -262,7 +271,7 @@ func _prune_magic_sequence(now: int) -> void:
 		magic_sequence.pop_front()
 		magic_sequence_times.pop_front()
 
-func _matches_magic_spell_pattern() -> bool:
+func _get_matched_magic_pattern_start() -> int:
 	for pattern in MAGIC_SPELL_PATTERNS:
 		if magic_sequence.size() < pattern.size():
 			continue
@@ -275,15 +284,15 @@ func _matches_magic_spell_pattern() -> bool:
 				break
 
 		if matches:
-			return true
+			return offset
 
-	return false
+	return -1
 
-func _magic_sequence_duration() -> float:
-	if magic_sequence_times.size() < 2:
+func _magic_sequence_duration_from(start_index: int, released_msec: int) -> float:
+	if start_index < 0 or magic_sequence_times.size() < start_index + 1:
 		return 999.0
 
-	return float(magic_sequence_times[-1] - magic_sequence_times[0]) / 1000.0
+	return float(released_msec - magic_sequence_times[start_index]) / 1000.0
 
 func play_block_impact_feedback() -> void:
 	var original_pos := weapon_pivot.position
@@ -337,6 +346,8 @@ func update_weapon_stance(delta: float) -> void:
 	if _is_using_staff():
 		base_target_pos = STAFF_IDLE_STANCE["pos"]
 		base_target_quat = _degrees_to_quat(STAFF_IDLE_STANCE["rot"])
+		if magic_drawing:
+			return
 
 	if is_defending:
 		base_target_pos = DEFENSE_STANCE["pos"]
