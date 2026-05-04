@@ -25,7 +25,7 @@ const DEFAULT_CRITICAL_ATTACK_DAMAGE: int = 60
 const DEFENSE_READY_DISTANCE: float = 0.04
 const DEFENSE_READY_ROT_DOT: float = 0.995
 const MAGIC_SEQUENCE_MAX_AGE: float = 1.4
-const MAGIC_CRITICAL_MAX_TIME: float = 0.2
+const MAGIC_CRITICAL_MAX_TIME: float = 0.3
 const MAGIC_SPELL_PATTERNS: Array[Array] = [
 	[5, 1, 2],
 	[1, 2, 3],
@@ -80,8 +80,11 @@ var active_attack_is_critical: bool = false
 var queued_magic_is_critical: bool = false
 var magic_drawing: bool = false
 var magic_draw_started_msec: int = 0
+var magic_draw_invalid: bool = false
+var magic_draw_closed: bool = false
 var magic_sequence: Array[int] = []
 var magic_sequence_times: Array[int] = []
+var magic_drawn_edges: Dictionary = {}
 var can_attack: bool = true
 var stance_transitioning: bool = false
 var stance_from_index: int = 0
@@ -181,8 +184,11 @@ func _start_magic_draw() -> void:
 
 	magic_drawing = true
 	magic_draw_started_msec = Time.get_ticks_msec()
+	magic_draw_invalid = false
+	magic_draw_closed = false
 	magic_sequence.clear()
 	magic_sequence_times.clear()
+	magic_drawn_edges.clear()
 	_record_magic_direction(combat_ui.current_direction)
 
 func _finish_magic_draw() -> void:
@@ -194,13 +200,14 @@ func _finish_magic_draw() -> void:
 
 	var released_msec := Time.get_ticks_msec()
 	var matched_pattern_start := _get_matched_magic_pattern_start()
-	var valid_cast := matched_pattern_start >= 0
+	var valid_cast := matched_pattern_start >= 0 and not magic_draw_invalid
 	var cast_duration := _magic_sequence_duration_from(matched_pattern_start, released_msec) if valid_cast else 999.0
 	queued_magic_is_critical = valid_cast and cast_duration <= MAGIC_CRITICAL_MAX_TIME
 	print("Magic sequence drawn: ", magic_sequence, " duration: ", cast_duration, " max: ", MAGIC_CRITICAL_MAX_TIME, " critical: ", queued_magic_is_critical)
 
 	magic_sequence.clear()
 	magic_sequence_times.clear()
+	magic_drawn_edges.clear()
 	combat_ui.clear_magic_trace()
 
 	if not valid_cast:
@@ -219,17 +226,103 @@ func _record_magic_direction(dir_index: int) -> void:
 		return
 
 	if magic_sequence.size() > 1 and magic_sequence[-2] == dir_index:
+		_remove_magic_edge(magic_sequence[-2], magic_sequence[-1])
 		magic_sequence.pop_back()
 		magic_sequence_times.pop_back()
+		magic_draw_closed = _is_magic_sequence_closed()
 		combat_ui.set_magic_trace(magic_sequence)
 		_play_staff_draw_motion(dir_index)
 		return
 
+	if magic_draw_closed:
+		_invalidate_magic_draw()
+		return
+
+	if magic_sequence.size() > 0 and _has_magic_edge(magic_sequence[-1], dir_index):
+		_invalidate_magic_draw()
+		return
+
+	if magic_sequence.size() > 0 and _magic_edge_crosses_existing(magic_sequence[-1], dir_index):
+		_invalidate_magic_draw()
+		return
+
+	if magic_sequence.size() > 0:
+		_add_magic_edge(magic_sequence[-1], dir_index)
+
+	var closes_symbol := magic_sequence.has(dir_index)
 	magic_sequence.append(dir_index)
 	magic_sequence_times.append(now)
+	if closes_symbol:
+		magic_draw_closed = true
 
 	combat_ui.set_magic_trace(magic_sequence)
 	_play_staff_draw_motion(dir_index)
+
+func _invalidate_magic_draw() -> void:
+	magic_draw_invalid = true
+	magic_drawing = false
+	magic_sequence.clear()
+	magic_sequence_times.clear()
+	magic_drawn_edges.clear()
+	magic_draw_closed = false
+	combat_ui.clear_magic_trace()
+	_return_staff_to_idle()
+	_play_magic_fizzle_feedback()
+
+func _is_magic_sequence_closed() -> bool:
+	return magic_sequence.size() > 2 and magic_sequence[0] == magic_sequence[-1]
+
+func _magic_edge_key(from_dir: int, to_dir: int) -> String:
+	return "%s:%s" % [min(from_dir, to_dir), max(from_dir, to_dir)]
+
+func _has_magic_edge(from_dir: int, to_dir: int) -> bool:
+	return magic_drawn_edges.has(_magic_edge_key(from_dir, to_dir))
+
+func _add_magic_edge(from_dir: int, to_dir: int) -> void:
+	magic_drawn_edges[_magic_edge_key(from_dir, to_dir)] = true
+
+func _remove_magic_edge(from_dir: int, to_dir: int) -> void:
+	magic_drawn_edges.erase(_magic_edge_key(from_dir, to_dir))
+
+func _magic_edge_crosses_existing(from_dir: int, to_dir: int) -> bool:
+	var a := _magic_point(from_dir)
+	var b := _magic_point(to_dir)
+
+	for edge_key in magic_drawn_edges.keys():
+		var parts := String(edge_key).split(":")
+		var c_dir := int(parts[0])
+		var d_dir := int(parts[1])
+		if from_dir == c_dir or from_dir == d_dir or to_dir == c_dir or to_dir == d_dir:
+			continue
+
+		if _segments_intersect(a, b, _magic_point(c_dir), _magic_point(d_dir)):
+			return true
+
+	return false
+
+func _magic_point(dir: int) -> Vector2:
+	match dir:
+		1:
+			return Vector2(0.0, -1.0)
+		2:
+			return Vector2(0.95, -0.31)
+		3:
+			return Vector2(0.59, 0.81)
+		4:
+			return Vector2(-0.59, 0.81)
+		5:
+			return Vector2(-0.95, -0.31)
+		_:
+			return Vector2.ZERO
+
+func _segments_intersect(a: Vector2, b: Vector2, c: Vector2, d: Vector2) -> bool:
+	var ab := b - a
+	var ac := c - a
+	var ad := d - a
+	var cd := d - c
+	var ca := a - c
+	var cb := b - c
+	return signf(ab.cross(ac)) != signf(ab.cross(ad)) and signf(cd.cross(ca)) != signf(cd.cross(cb))
 
 func _play_staff_draw_motion(dir_index: int) -> void:
 	var direction := _magic_direction_offset(dir_index)
@@ -676,8 +769,11 @@ func equip_weapon(weapon_scene: PackedScene, drop_current: bool, drop_position: 
 	current_weapon.position = Vector3.ZERO
 	current_weapon.rotation = Vector3.ZERO
 	magic_drawing = false
+	magic_draw_invalid = false
+	magic_draw_closed = false
 	magic_sequence.clear()
 	magic_sequence_times.clear()
+	magic_drawn_edges.clear()
 	_on_combat_direction_changed(0)
 
 func _can_equip_weapon(weapon: Node) -> bool:
