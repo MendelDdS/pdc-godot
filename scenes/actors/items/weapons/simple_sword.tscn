@@ -6,6 +6,7 @@
 [node name="SimpleSword" type="Node3D" unique_id=1100445161]
 script = ExtResource("2_6n2of")
 weapon_name = "Simple Sword"
+weapon_kind = "Sword"
 attack_damage_range = Vector2i(2, 5)
 critical_attack_damage_range = Vector2i(6, 10)
 

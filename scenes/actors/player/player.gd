@@ -3,6 +3,10 @@
 extends CharacterBody3D
 class_name Player
 
+enum PlayerClass { WARRIOR, MAGE }
+
+@export var player_class: PlayerClass = PlayerClass.MAGE
+
 const MOVE_DURATION: float = 0.35
 const ROTATE_DURATION: float = 0.3
 const HEAD_BOB_FREQ: float = 8.0
@@ -20,8 +24,16 @@ const DEFAULT_ATTACK_DAMAGE: int = 20
 const DEFAULT_CRITICAL_ATTACK_DAMAGE: int = 60
 const DEFENSE_READY_DISTANCE: float = 0.04
 const DEFENSE_READY_ROT_DOT: float = 0.995
+const MAGIC_SEQUENCE_MAX_AGE: float = 1.4
+const MAGIC_CRITICAL_MAX_TIME: float = 0.85
+const MAGIC_SPELL_PATTERNS: Array[Array] = [
+	[5, 1, 2],
+	[1, 2, 3],
+	[4, 0, 3]
+]
 
 const SIMPLE_SWORD_SCENE = preload("res://scenes/actors/items/weapons/simple_sword.tscn")
+const SIMPLE_STAFF_SCENE = preload("res://scenes/actors/items/weapons/simple_staff.tscn")
 const STANCES = {
 	0: {"pos": Vector3(0.5, -0.3, -1), "rot": Vector3(0, -90, 90)},    # CENTER (Meio)
 	1: {"pos": Vector3(0, 0.7, -1), "rot": Vector3(0, -90, 0)},     # TOP (Cima)
@@ -31,6 +43,8 @@ const STANCES = {
 	5: {"pos": Vector3(-1, 0.5, -1), "rot": Vector3(45, -90, 0)}     # TOP_LEFT (Cima-Esquerda)
 }
 const DEFENSE_STANCE = {"pos": Vector3(0.5, 0.3, -0.8), "rot": Vector3(180, 0, 45)}
+const STAFF_IDLE_STANCE = {"pos": Vector3(0.72, -0.12, -1.0), "rot": Vector3(10, -90, 25)}
+const STAFF_DRAW_DISTANCE: float = 0.18
 
 @onready var health_component: HealthComponent = $HealthComponent
 @onready var camera_pivot: Node3D = $CameraPivot
@@ -62,6 +76,10 @@ var block_ready_msec: int = -100000
 var defense_pose_ready: bool = false
 var critical_attack_until_msec: int = -100000
 var active_attack_is_critical: bool = false
+var queued_magic_is_critical: bool = false
+var magic_drawing: bool = false
+var magic_sequence: Array[int] = []
+var magic_sequence_times: Array[int] = []
 var can_attack: bool = true
 var stance_transitioning: bool = false
 var stance_from_index: int = 0
@@ -88,7 +106,7 @@ func _ready() -> void:
 
 	combat_ui.direction_changed.connect(_on_combat_direction_changed)
 
-	equip_weapon(SIMPLE_SWORD_SCENE, false, global_position)
+	equip_weapon(_get_starting_weapon_scene(), false, global_position)
 	melee_ray.add_exception(self)
 
 func _process(delta: float) -> void:
@@ -115,7 +133,12 @@ func handle_combat_input() -> void:
 	if not is_defending:
 		defense_pose_ready = false
 
-	if Input.is_action_just_pressed("Item Action") and can_attack and not is_defending:
+	if _is_using_staff():
+		if Input.is_action_just_pressed("Item Action") and can_attack and not is_defending:
+			_start_magic_draw()
+		elif Input.is_action_just_released("Item Action") and magic_drawing:
+			_finish_magic_draw()
+	elif Input.is_action_just_pressed("Item Action") and can_attack and not is_defending:
 		perform_attack()
 
 func is_blocking() -> bool:
@@ -140,6 +163,127 @@ func _consume_critical_attack_window() -> bool:
 
 	critical_attack_until_msec = -100000
 	return true
+
+func _get_starting_weapon_scene() -> PackedScene:
+	return SIMPLE_STAFF_SCENE if player_class == PlayerClass.MAGE else SIMPLE_SWORD_SCENE
+
+func _is_using_staff() -> bool:
+	return current_weapon != null and current_weapon.has_method("is_staff") and current_weapon.is_staff()
+
+func _is_using_sword() -> bool:
+	return current_weapon == null or not _is_using_staff()
+
+func _start_magic_draw() -> void:
+	if is_attacking or not can_attack:
+		return
+
+	magic_drawing = true
+	magic_sequence.clear()
+	magic_sequence_times.clear()
+	_record_magic_direction(combat_ui.current_direction)
+
+func _finish_magic_draw() -> void:
+	magic_drawing = false
+	if magic_sequence.is_empty():
+		combat_ui.clear_magic_trace()
+		return
+
+	var now := Time.get_ticks_msec()
+	_prune_magic_sequence(now)
+	var valid_cast := _matches_magic_spell_pattern()
+	queued_magic_is_critical = valid_cast and _magic_sequence_duration() <= MAGIC_CRITICAL_MAX_TIME
+	magic_sequence.clear()
+	magic_sequence_times.clear()
+	combat_ui.clear_magic_trace()
+
+	if not valid_cast:
+		_play_magic_fizzle_feedback()
+		return
+
+	perform_attack()
+
+func _record_magic_direction(dir_index: int) -> void:
+	if not _is_using_staff() or not magic_drawing or is_attacking:
+		return
+
+	var now := Time.get_ticks_msec()
+	_prune_magic_sequence(now)
+	if magic_sequence.size() > 0 and magic_sequence[-1] == dir_index:
+		return
+
+	magic_sequence.append(dir_index)
+	magic_sequence_times.append(now)
+	if magic_sequence.size() > 4:
+		magic_sequence.pop_front()
+		magic_sequence_times.pop_front()
+
+	combat_ui.set_magic_trace(magic_sequence)
+	_play_staff_draw_motion(dir_index)
+
+func _play_staff_draw_motion(dir_index: int) -> void:
+	var direction := _magic_direction_offset(dir_index)
+	var target_pos: Vector3 = STAFF_IDLE_STANCE["pos"] + Vector3(direction.x, direction.y, 0.0) * STAFF_DRAW_DISTANCE
+	var target_quat := _degrees_to_quat(STAFF_IDLE_STANCE["rot"]) * _local_quat(Vector3(-direction.y * 6.0, 0.0, direction.x * 8.0))
+
+	var tween := create_tween().set_parallel(true)
+	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(weapon_pivot, "position", target_pos, 0.08)
+	tween.tween_property(weapon_pivot, "quaternion", target_quat, 0.08)
+
+func _magic_direction_offset(dir_index: int) -> Vector2:
+	match dir_index:
+		1:
+			return Vector2(0.0, 1.0)
+		2:
+			return Vector2(0.85, 0.55)
+		3:
+			return Vector2(0.85, -0.55)
+		4:
+			return Vector2(-0.85, -0.55)
+		5:
+			return Vector2(-0.85, 0.55)
+		_:
+			return Vector2.ZERO
+
+func _consume_magic_critical_cast() -> bool:
+	var now := Time.get_ticks_msec()
+	_prune_magic_sequence(now)
+	var is_critical := _matches_magic_spell_pattern() and _magic_sequence_duration() <= MAGIC_CRITICAL_MAX_TIME
+	magic_sequence.clear()
+	magic_sequence_times.clear()
+	return is_critical
+
+func _prune_magic_sequence(now: int) -> void:
+	while magic_sequence_times.size() > 0:
+		var age := float(now - magic_sequence_times[0]) / 1000.0
+		if age <= MAGIC_SEQUENCE_MAX_AGE:
+			return
+
+		magic_sequence.pop_front()
+		magic_sequence_times.pop_front()
+
+func _matches_magic_spell_pattern() -> bool:
+	for pattern in MAGIC_SPELL_PATTERNS:
+		if magic_sequence.size() < pattern.size():
+			continue
+
+		var offset := magic_sequence.size() - pattern.size()
+		var matches := true
+		for i in pattern.size():
+			if magic_sequence[offset + i] != pattern[i]:
+				matches = false
+				break
+
+		if matches:
+			return true
+
+	return false
+
+func _magic_sequence_duration() -> float:
+	if magic_sequence_times.size() < 2:
+		return 999.0
+
+	return float(magic_sequence_times[-1] - magic_sequence_times[0]) / 1000.0
 
 func play_block_impact_feedback() -> void:
 	var original_pos := weapon_pivot.position
@@ -190,12 +334,18 @@ func update_weapon_stance(delta: float) -> void:
 
 	var base_target_pos := target_stance_pos
 	var base_target_quat := _degrees_to_quat(target_stance_rot)
+	if _is_using_staff():
+		base_target_pos = STAFF_IDLE_STANCE["pos"]
+		base_target_quat = _degrees_to_quat(STAFF_IDLE_STANCE["rot"])
 
 	if is_defending:
 		base_target_pos = DEFENSE_STANCE["pos"]
 		base_target_quat = _degrees_to_quat(DEFENSE_STANCE["rot"])
 		if stance_transitioning:
 			stance_transitioning = false
+
+	if _is_using_staff():
+		stance_transitioning = false
 
 	if stance_transitioning:
 		var is_arc := _is_bottom_cross_transition(stance_from_index, stance_to_index) and not is_defending
@@ -243,23 +393,29 @@ func perform_attack() -> void:
 		
 	is_attacking = true
 	can_attack = false
-	active_attack_is_critical = _consume_critical_attack_window()
+	active_attack_is_critical = _consume_critical_attack_window() or (queued_magic_is_critical if _is_using_staff() else false)
+	queued_magic_is_critical = false
 	combat_ui.is_locked = true
 	melee_ray.enabled = true
 	
 	var attack_from_stance := current_stance_index
-	var next_stance := _get_next_stance_after_attack(attack_from_stance)
+	var next_stance := attack_from_stance if _is_using_staff() else _get_next_stance_after_attack(attack_from_stance)
 	combat_ui.set_direction(next_stance)
 
 	var original_pos: Vector3 = STANCES[attack_from_stance]["pos"]
 	var original_quat: Quaternion = _degrees_to_quat(STANCES[attack_from_stance]["rot"])
 	var final_pos: Vector3 = STANCES[next_stance]["pos"]
 	var final_quat: Quaternion = _degrees_to_quat(STANCES[next_stance]["rot"])
+	if _is_using_staff():
+		original_pos = STAFF_IDLE_STANCE["pos"]
+		original_quat = _degrees_to_quat(STAFF_IDLE_STANCE["rot"])
+		final_pos = original_pos
+		final_quat = original_quat
 
 	weapon_pivot.position = original_pos
 	weapon_pivot.quaternion = original_quat
 
-	var pose := _build_attack_pose(attack_from_stance, original_pos, original_quat)
+	var pose := _build_staff_cast_pose(attack_from_stance, original_pos, original_quat) if _is_using_staff() else _build_attack_pose(attack_from_stance, original_pos, original_quat)
 	var windup_pos: Vector3 = pose["windup_pos"]
 	var windup_quat: Quaternion = pose["windup_quat"]
 	var attack_pos: Vector3 = pose["attack_pos"]
@@ -279,10 +435,12 @@ func perform_attack() -> void:
 			camera_kick_dir = Vector3(0.0, -1.0, 0.5)
 		0:
 			camera_kick_dir = Vector3(0.8, 0.0, 0.0)
+	if _is_using_staff():
+		camera_kick_dir *= 0.7
 
 	var is_thrust := attack_from_stance == 0
 	var max_allowed_pullback_z := original_pos.z + 0.08
-	var min_required_lunge_z := original_pos.z - (2.5 if is_thrust else 0.35)
+	var min_required_lunge_z := original_pos.z - (1.45 if _is_using_staff() else (2.5 if is_thrust else 0.35))
 	windup_pos.z = min(windup_pos.z, max_allowed_pullback_z)
 	attack_pos.z = min(attack_pos.z, min_required_lunge_z)
 	if active_attack_is_critical:
@@ -356,6 +514,14 @@ func _build_attack_pose(from_stance: int, original_pos: Vector3, original_quat: 
 				"attack_quat": original_quat
 			}
 
+func _build_staff_cast_pose(from_stance: int, original_pos: Vector3, original_quat: Quaternion) -> Dictionary:
+	return {
+		"windup_pos": original_pos + Vector3(0.0, 0.04, 0.12),
+		"windup_quat": original_quat * _local_quat(Vector3(-6.0, 0.0, 0.0)),
+		"attack_pos": original_pos + Vector3(0.0, 0.02, -1.45),
+		"attack_quat": original_quat * _local_quat(Vector3(14.0, 0.0, 0.0))
+	}
+
 func _local_quat(rot_degrees: Vector3) -> Quaternion:
 	return Quaternion.from_euler(Vector3(
 		deg_to_rad(rot_degrees.x),
@@ -384,7 +550,10 @@ func _on_attack_impact_event(camera_kick_dir: Vector3) -> void:
 	_apply_camera_feedback(camera_kick_dir)
 	if active_attack_is_critical:
 		_play_critical_attack_feedback()
-	_check_hit()
+	if _is_using_staff():
+		_check_magic_hit()
+	else:
+		_check_hit()
 
 func _on_attack_animation_finished_event(next_stance: int, final_pos: Vector3, final_rot: Vector3) -> void:
 	is_attacking = false
@@ -433,6 +602,37 @@ func _check_hit() -> void:
 				hit_owner.on_hit_by_player(self)
 			health.take_damage(_get_current_attack_damage())
 
+func _check_magic_hit() -> void:
+	var start := camera.global_position
+	var end := start + (-camera.global_transform.basis.z.normalized() * _get_current_magic_range())
+	var query := PhysicsRayQueryParameters3D.create(start, end, 2)
+	query.exclude = [self]
+
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	var hit_pos: Vector3 = hit.get("position", end)
+	_spawn_magic_projectile(hit_pos, active_attack_is_critical)
+	if hit.is_empty():
+		return
+
+	var target = hit.get("collider")
+	var health = target.get_node_or_null("HealthComponent")
+	if not health and target.get_parent():
+		health = target.get_parent().get_node_or_null("HealthComponent")
+
+	if health:
+		var hit_owner = health.get_parent()
+		if active_attack_is_critical and hit_owner and hit_owner.has_method("on_critical_hit_by_player"):
+			hit_owner.on_critical_hit_by_player(self)
+		elif hit_owner and hit_owner.has_method("on_hit_by_player"):
+			hit_owner.on_hit_by_player(self)
+		health.take_damage(_get_current_attack_damage())
+
+func _get_current_magic_range() -> float:
+	if current_weapon != null and current_weapon.has_method("get_magic_range"):
+		return current_weapon.get_magic_range()
+
+	return 18.0
+
 func _get_current_attack_damage() -> int:
 	if current_weapon == null:
 		return DEFAULT_CRITICAL_ATTACK_DAMAGE if active_attack_is_critical else DEFAULT_ATTACK_DAMAGE
@@ -446,20 +646,34 @@ func _get_current_attack_damage() -> int:
 	return DEFAULT_CRITICAL_ATTACK_DAMAGE if active_attack_is_critical else DEFAULT_ATTACK_DAMAGE
 
 func equip_weapon(weapon_scene: PackedScene, drop_current: bool, drop_position: Vector3) -> void:
+	var next_weapon := weapon_scene.instantiate()
+	if not _can_equip_weapon(next_weapon):
+		next_weapon.queue_free()
+		return
+
 	if drop_current and current_weapon_scene != null:
 		_drop_current_weapon(drop_position)
 
 	if current_weapon:
 		current_weapon.queue_free()
 
-	current_weapon = weapon_scene.instantiate()
+	current_weapon = next_weapon
 	current_weapon_scene = weapon_scene
 	if current_weapon.has_method("set_pickup_enabled"):
 		current_weapon.set_pickup_enabled(false)
 	weapon_pivot.add_child(current_weapon)
 	current_weapon.position = Vector3.ZERO
 	current_weapon.rotation = Vector3.ZERO
+	magic_drawing = false
+	magic_sequence.clear()
+	magic_sequence_times.clear()
 	_on_combat_direction_changed(0)
+
+func _can_equip_weapon(weapon: Node) -> bool:
+	if player_class == PlayerClass.WARRIOR:
+		return weapon.has_method("is_sword") and weapon.is_sword()
+
+	return weapon.has_method("is_staff") and weapon.is_staff()
 
 func _drop_current_weapon(drop_position: Vector3) -> void:
 	var dropped_weapon := current_weapon_scene.instantiate()
@@ -479,6 +693,10 @@ func _get_weapon_drop_parent() -> Node:
 
 func _on_combat_direction_changed(dir_index: int) -> void:
 	if is_attacking or combat_ui.is_locked:
+		return
+
+	_record_magic_direction(dir_index)
+	if _is_using_staff():
 		return
 
 	stance_from_index = current_stance_index
@@ -566,9 +784,19 @@ func _try_pickup_weapon_current_tile(drop_position: Vector3) -> void:
 			continue
 
 		var weapon_scene: PackedScene = pickup.get_weapon_scene()
-		pickup.queue_free()
-		equip_weapon(weapon_scene, true, drop_position)
-		return
+		if _try_equip_pickup_weapon(weapon_scene, pickup, drop_position):
+			return
+
+func _try_equip_pickup_weapon(weapon_scene: PackedScene, pickup: Node, drop_position: Vector3) -> bool:
+	var test_weapon := weapon_scene.instantiate()
+	var can_equip := _can_equip_weapon(test_weapon)
+	test_weapon.queue_free()
+	if not can_equip:
+		return false
+
+	pickup.queue_free()
+	equip_weapon(weapon_scene, true, drop_position)
+	return true
 
 func _has_enemy_on_tile(target_pos: Vector3) -> bool:
 	var target_cell := _world_to_cell(target_pos)
@@ -659,3 +887,45 @@ func _play_critical_attack_feedback() -> void:
 	tween.tween_property(camera, "rotation_degrees", original_rot + Vector3(-2.4, 1.6, -1.6), 0.03)
 	tween.tween_property(camera, "rotation_degrees", original_rot, 0.13).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tween.parallel().tween_property(camera, "fov", original_fov, 0.13).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+func _spawn_magic_projectile(target_pos: Vector3, critical: bool) -> void:
+	var projectile := MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.08 if not critical else 0.13
+	mesh.height = mesh.radius * 2.0
+	projectile.mesh = mesh
+
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.25, 0.75, 1.0, 1.0) if not critical else Color(1.0, 0.85, 0.25, 1.0)
+	material.emission_enabled = true
+	material.emission = material.albedo_color
+	material.emission_energy_multiplier = 2.5 if not critical else 5.0
+	projectile.material_override = material
+
+	get_tree().current_scene.add_child(projectile)
+	projectile.global_position = weapon_pivot.global_position
+
+	var tween := create_tween()
+	tween.tween_property(projectile, "global_position", target_pos, 0.16 if not critical else 0.1)
+	tween.tween_property(projectile, "scale", Vector3.ZERO, 0.08)
+	tween.tween_callback(projectile.queue_free)
+
+func _play_magic_fizzle_feedback() -> void:
+	var fizzle := MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.12
+	mesh.height = 0.24
+	fizzle.mesh = mesh
+
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.45, 0.45, 0.5, 0.75)
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fizzle.material_override = material
+
+	get_tree().current_scene.add_child(fizzle)
+	fizzle.global_position = weapon_pivot.global_position + (-camera.global_transform.basis.z.normalized() * 0.5)
+
+	var tween := create_tween()
+	tween.tween_property(fizzle, "scale", Vector3(2.0, 2.0, 2.0), 0.18)
+	tween.parallel().tween_property(material, "albedo_color", Color(0.45, 0.45, 0.5, 0.0), 0.18)
+	tween.tween_callback(fizzle.queue_free)

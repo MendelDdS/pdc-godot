@@ -20,9 +20,38 @@ var center_threshold: float = 30.0
 var max_distance: float = 100.0
 var mouse_sensitivity: float = 1 # Ajuste este valor para diminuir a sensibilidade
 var is_locked: bool = false
+var magic_trace: Array[int] = []
 
 func _ready() -> void:
 	update_visuals()
+
+func _draw() -> void:
+	if magic_trace.size() < 2:
+		return
+
+	for i in range(magic_trace.size() - 1):
+		draw_line(
+			_get_point_center(magic_trace[i]),
+			_get_point_center(magic_trace[i + 1]),
+			Color(0.35, 0.75, 1.0, 0.95),
+			4.0,
+			true
+		)
+
+func set_magic_trace(trace: Array[int]) -> void:
+	magic_trace = trace.duplicate()
+	queue_redraw()
+
+func clear_magic_trace() -> void:
+	magic_trace.clear()
+	queue_redraw()
+
+func _get_point_center(dir: int) -> Vector2:
+	var point = points.get(dir)
+	if point == null:
+		return Vector2.ZERO
+
+	return point.position + point.size * 0.5
 
 func handle_mouse_movement(relative_mouse: Vector2) -> void:
 	if is_locked:

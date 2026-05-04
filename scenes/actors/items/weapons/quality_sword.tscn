@@ -6,6 +6,7 @@
 [node name="QualitySword" type="Node3D" unique_id=1550525600]
 script = ExtResource("1_8u7mh")
 weapon_name = "Quality Sword"
+weapon_kind = "Sword"
 attack_damage_range = Vector2i(4, 7)
 critical_attack_damage_range = Vector2i(10, 15)
 texture_path = ""

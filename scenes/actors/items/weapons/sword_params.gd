@@ -2,8 +2,10 @@ extends Node3D
 class_name Weapon
 
 @export var weapon_name: String = "Simple Sword"
+@export_enum("Sword", "Staff") var weapon_kind: String = "Sword"
 @export var attack_damage_range: Vector2i = Vector2i(2, 5)
 @export var critical_attack_damage_range: Vector2i = Vector2i(6, 10)
+@export var magic_range: float = 18.0
 @export var texture_path: String = "res://assets/weapons/knight_texture.png"
 @export var is_pickup: bool = false
 @export var pickup_float_height: float = 1.0
@@ -59,6 +61,15 @@ func roll_attack_damage() -> int:
 
 func roll_critical_attack_damage() -> int:
 	return randi_range(critical_attack_damage_range.x, critical_attack_damage_range.y)
+
+func get_magic_range() -> float:
+	return magic_range
+
+func is_sword() -> bool:
+	return weapon_kind == "Sword"
+
+func is_staff() -> bool:
+	return weapon_kind == "Staff"
 
 func _find_first_mesh_instance(node: Node) -> MeshInstance3D:
 	if node is MeshInstance3D:
