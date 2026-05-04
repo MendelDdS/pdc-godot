@@ -17,9 +17,13 @@ var attack_timer: float = 0.0
 var cooldown_timer: float = 0.0
 var body_material: StandardMaterial3D
 var base_body_color: Color = Color(1.0, 1.0, 1.0, 1.0)
+var base_body_rotation_degrees: Vector3 = Vector3.ZERO
 var attack_has_hit: bool = false
 var attack_target_cell: Vector2i
 var stun_timer: float = 0.0
+var stun_tween: Tween
+var body_rotation_tween: Tween
+var reset_body_rotation_next_frame: bool = false
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -29,10 +33,15 @@ func _ready() -> void:
 	body_material = StandardMaterial3D.new()
 	body_material.albedo_color = base_body_color
 	body.material_override = body_material
+	base_body_rotation_degrees = body.rotation_degrees
 
 func _physics_process(delta: float) -> void:
 	if state == State.DEAD:
 		return
+
+	if reset_body_rotation_next_frame:
+		reset_body_rotation_next_frame = false
+		body.rotation_degrees = base_body_rotation_degrees
 
 	if player == null or not is_instance_valid(player):
 		player = _find_player()
@@ -85,12 +94,13 @@ func stun(duration: float) -> void:
 	state = State.STUNNED
 	stun_timer = duration
 	cooldown_timer = attack_cooldown
+	_reset_body_rotation()
 	_play_stun_feedback()
 
 func _process_stunned(delta: float) -> void:
 	stun_timer -= delta
 	if stun_timer <= 0.0:
-		body.rotation_degrees = Vector3.ZERO
+		_reset_body_rotation()
 		state = State.IDLE
 		cooldown_timer = attack_cooldown
 
@@ -134,26 +144,43 @@ func _play_damage_feedback() -> void:
 
 func _play_critical_damage_feedback() -> void:
 	body_material.albedo_color = Color(1.0, 0.85, 0.25, 1.0)
+	if body_rotation_tween:
+		body_rotation_tween.kill()
+	body.rotation_degrees = base_body_rotation_degrees
 
 	var original_pos := global_position
-	var original_body_rot := body.rotation_degrees
 	var recoil_pos := original_pos + (global_transform.basis.z.normalized() * Constants.TILE_SIZE * 0.28)
-	var tween := create_tween()
-	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(self, "global_position", recoil_pos, 0.08)
-	tween.parallel().tween_property(body, "rotation_degrees", original_body_rot + Vector3(-10.0, 0.0, 13.0), 0.08)
-	tween.parallel().tween_property(body_material, "albedo_color", base_body_color, 0.32)
-	tween.tween_property(self, "global_position", original_pos, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_property(body, "rotation_degrees", original_body_rot + Vector3(4.0, 0.0, -6.0), 0.08)
-	tween.tween_property(body, "rotation_degrees", original_body_rot, 0.10).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	body_rotation_tween = create_tween()
+	body_rotation_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	body_rotation_tween.tween_property(self, "global_position", recoil_pos, 0.08)
+	body_rotation_tween.parallel().tween_property(body, "rotation_degrees", base_body_rotation_degrees + Vector3(-10.0, 0.0, 13.0), 0.08)
+	body_rotation_tween.parallel().tween_property(body_material, "albedo_color", base_body_color, 0.32)
+	body_rotation_tween.tween_property(self, "global_position", original_pos, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	body_rotation_tween.parallel().tween_property(body, "rotation_degrees", base_body_rotation_degrees + Vector3(4.0, 0.0, -6.0), 0.08)
+	body_rotation_tween.tween_property(body, "rotation_degrees", base_body_rotation_degrees, 0.10).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	body_rotation_tween.tween_callback(_finish_body_rotation_feedback)
 
 func _play_stun_feedback() -> void:
-	var tween := create_tween()
-	tween.set_loops(4)
-	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tween.tween_property(body, "rotation_degrees", Vector3(0.0, 0.0, 7.0), 0.12)
-	tween.tween_property(body, "rotation_degrees", Vector3(0.0, 0.0, -7.0), 0.12)
-	tween.tween_property(body, "rotation_degrees", Vector3.ZERO, 0.08)
+	if body_rotation_tween:
+		body_rotation_tween.kill()
+	body_rotation_tween = create_tween()
+	body_rotation_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	for i in 4:
+		body_rotation_tween.tween_property(body, "rotation_degrees", base_body_rotation_degrees + Vector3(0.0, 0.0, 7.0), 0.12)
+		body_rotation_tween.tween_property(body, "rotation_degrees", base_body_rotation_degrees + Vector3(0.0, 0.0, -7.0), 0.12)
+	body_rotation_tween.tween_property(body, "rotation_degrees", base_body_rotation_degrees, 0.08)
+	body_rotation_tween.tween_callback(_reset_body_rotation)
+
+func _reset_body_rotation() -> void:
+	if body_rotation_tween:
+		body_rotation_tween.kill()
+		body_rotation_tween = null
+	body.rotation_degrees = base_body_rotation_degrees
+
+func _finish_body_rotation_feedback() -> void:
+	body_rotation_tween = null
+	body.rotation_degrees = base_body_rotation_degrees
+	reset_body_rotation_next_frame = true
 
 func _world_to_cell(world_pos: Vector3) -> Vector2i:
 	return Vector2i(
