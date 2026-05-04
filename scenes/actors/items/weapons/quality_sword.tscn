@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://8j4y8buyrtbp"]
+
+[ext_resource type="Script" uid="uid://csb17m6npbl6g" path="res://scenes/actors/items/weapons/sword_params.gd" id="1_8u7mh"]
+[ext_resource type="PackedScene" uid="uid://d2jo3vq11lffm" path="res://assets/weapons/sword_2handed_color.gltf" id="1_yfooe"]
+
+[node name="QualitySword" type="Node3D" unique_id=1550525600]
+script = ExtResource("1_8u7mh")
+weapon_name = "Quality Sword"
+attack_damage_range = Vector2i(4, 7)
+critical_attack_damage_range = Vector2i(10, 15)
+texture_path = ""
+is_pickup = true
+
+[node name="QualitySwordModel" parent="." unique_id=505970141 instance=ExtResource("1_yfooe")]

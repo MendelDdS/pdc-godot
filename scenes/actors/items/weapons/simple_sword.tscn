@@ -1,9 +1,12 @@
 [gd_scene format=3 uid="uid://dh4s2qj4kx12i"]
 
 [ext_resource type="PackedScene" uid="uid://cf14h0qiv07kv" path="res://assets/weapons/sword_1handed.gltf" id="1_7i6l3"]
-[ext_resource type="Script" uid="uid://csb17m6npbl6g" path="res://scenes/actors/items/simple_sword.gd" id="2_6n2of"]
+[ext_resource type="Script" uid="uid://csb17m6npbl6g" path="res://scenes/actors/items/weapons/sword_params.gd" id="2_6n2of"]
 
 [node name="SimpleSword" type="Node3D" unique_id=1100445161]
 script = ExtResource("2_6n2of")
+weapon_name = "Simple Sword"
+attack_damage_range = Vector2i(2, 5)
+critical_attack_damage_range = Vector2i(6, 10)
 
 [node name="SwordModel" parent="." unique_id=1926259105 instance=ExtResource("1_7i6l3")]

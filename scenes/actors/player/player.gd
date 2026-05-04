@@ -16,12 +16,12 @@ const BOTTOM_CROSS_TRANSITION_DURATION: float = 0.45
 const BOTTOM_CROSS_ARC_HEIGHT: float = 0.85
 const PERFECT_BLOCK_WINDOW: float = 0.22
 const CRITICAL_ATTACK_WINDOW: float = 1.2
-const NORMAL_ATTACK_DAMAGE: int = 20
-const CRITICAL_ATTACK_DAMAGE: int = 60
+const DEFAULT_ATTACK_DAMAGE: int = 20
+const DEFAULT_CRITICAL_ATTACK_DAMAGE: int = 60
 const DEFENSE_READY_DISTANCE: float = 0.04
 const DEFENSE_READY_ROT_DOT: float = 0.995
 
-const SWORD_SCENE = preload("res://scenes/actors/items/simple_sword.tscn")
+const SIMPLE_SWORD_SCENE = preload("res://scenes/actors/items/weapons/simple_sword.tscn")
 const STANCES = {
 	0: {"pos": Vector3(0.5, -0.3, -1), "rot": Vector3(0, -90, 90)},    # CENTER (Meio)
 	1: {"pos": Vector3(0, 0.7, -1), "rot": Vector3(0, -90, 0)},     # TOP (Cima)
@@ -51,6 +51,7 @@ var bob_time: float = 0.0
 var base_camera_y: float = 0.0
 
 var current_weapon: Node3D = null
+var current_weapon_scene: PackedScene = null
 var current_stance_index: int = 0
 var target_stance_pos: Vector3 = STANCES[0]["pos"]
 var target_stance_rot: Vector3 = STANCES[0]["rot"]
@@ -87,7 +88,7 @@ func _ready() -> void:
 
 	combat_ui.direction_changed.connect(_on_combat_direction_changed)
 
-	instantiate_weapon(SWORD_SCENE)
+	equip_weapon(SIMPLE_SWORD_SCENE, false, global_position)
 	melee_ray.add_exception(self)
 
 func _process(delta: float) -> void:
@@ -430,15 +431,51 @@ func _check_hit() -> void:
 				hit_owner.on_critical_hit_by_player(self)
 			elif hit_owner and hit_owner.has_method("on_hit_by_player"):
 				hit_owner.on_hit_by_player(self)
-			health.take_damage(CRITICAL_ATTACK_DAMAGE if active_attack_is_critical else NORMAL_ATTACK_DAMAGE)
+			health.take_damage(_get_current_attack_damage())
 
-func instantiate_weapon(weapon_scene: PackedScene) -> void:
+func _get_current_attack_damage() -> int:
+	if current_weapon == null:
+		return DEFAULT_CRITICAL_ATTACK_DAMAGE if active_attack_is_critical else DEFAULT_ATTACK_DAMAGE
+
+	if active_attack_is_critical and current_weapon.has_method("roll_critical_attack_damage"):
+		return current_weapon.roll_critical_attack_damage()
+
+	if current_weapon.has_method("roll_attack_damage"):
+		return current_weapon.roll_attack_damage()
+
+	return DEFAULT_CRITICAL_ATTACK_DAMAGE if active_attack_is_critical else DEFAULT_ATTACK_DAMAGE
+
+func equip_weapon(weapon_scene: PackedScene, drop_current: bool, drop_position: Vector3) -> void:
+	if drop_current and current_weapon_scene != null:
+		_drop_current_weapon(drop_position)
+
 	if current_weapon:
 		current_weapon.queue_free()
 
 	current_weapon = weapon_scene.instantiate()
+	current_weapon_scene = weapon_scene
+	if current_weapon.has_method("set_pickup_enabled"):
+		current_weapon.set_pickup_enabled(false)
 	weapon_pivot.add_child(current_weapon)
+	current_weapon.position = Vector3.ZERO
+	current_weapon.rotation = Vector3.ZERO
 	_on_combat_direction_changed(0)
+
+func _drop_current_weapon(drop_position: Vector3) -> void:
+	var dropped_weapon := current_weapon_scene.instantiate()
+	var drop_parent := _get_weapon_drop_parent()
+	drop_parent.add_child(dropped_weapon)
+	dropped_weapon.global_position = Vector3(drop_position.x, drop_position.y, drop_position.z)
+	dropped_weapon.rotation = Vector3.ZERO
+	if dropped_weapon.has_method("set_pickup_enabled"):
+		dropped_weapon.set_pickup_enabled(true)
+
+func _get_weapon_drop_parent() -> Node:
+	var level_container := get_parent().get_node_or_null("LevelContainer")
+	if level_container and level_container.get_child_count() > 0:
+		return level_container.get_child(0)
+
+	return get_tree().current_scene
 
 func _on_combat_direction_changed(dir_index: int) -> void:
 	if is_attacking or combat_ui.is_locked:
@@ -494,6 +531,7 @@ func handle_movement_input() -> void:
 		turn(-90)
 
 func move_in_direction(direction: Vector3, ray: RayCast3D, is_strafe: bool = false, strafe_dir: int = 0) -> void:
+	var previous_pos := global_position
 	var target_pos = global_position + direction.normalized() * Constants.TILE_SIZE
 
 	if ray.is_colliding() || _has_enemy_on_tile(target_pos):
@@ -512,7 +550,25 @@ func move_in_direction(direction: Vector3, ray: RayCast3D, is_strafe: bool = fal
 		tween.tween_property(camera, "rotation:z", target_tilt, MOVE_DURATION * 0.5)
 		tween.chain().tween_property(camera, "rotation:z", 0.0, MOVE_DURATION * 0.5)
 
-	tween.chain().tween_callback(func(): is_moving = false)
+	tween.chain().tween_callback(func():
+		is_moving = false
+		_try_pickup_weapon_current_tile(previous_pos)
+	)
+
+func _try_pickup_weapon_current_tile(drop_position: Vector3) -> void:
+	var current_cell := _world_to_cell(global_position)
+	for pickup in get_tree().get_nodes_in_group("weapon_pickups"):
+		if not pickup is Node3D:
+			continue
+		if _world_to_cell(pickup.global_position) != current_cell:
+			continue
+		if not pickup.has_method("get_weapon_scene"):
+			continue
+
+		var weapon_scene: PackedScene = pickup.get_weapon_scene()
+		pickup.queue_free()
+		equip_weapon(weapon_scene, true, drop_position)
+		return
 
 func _has_enemy_on_tile(target_pos: Vector3) -> bool:
 	var target_cell := _world_to_cell(target_pos)
@@ -581,7 +637,6 @@ func _on_health_changed() -> void:
 	print("Cura recebida! HP: ", health_component.current_health)
 
 func _on_take_damage() -> void:
-	print("Dano recebido! HP: ", health_component.current_health)
 	_play_damage_camera_shake()
 
 func _play_damage_camera_shake() -> void:

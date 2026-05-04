@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://d4bfi1jkkc2mj" path="res://scenes/levels/dungeon_entrance.gd" id="1_32fru"]
 [ext_resource type="MeshLibrary" uid="uid://b5arnqnvud01h" path="res://scenes/actors/evironment/tiles_lib.tres" id="2_5c8o1"]
 [ext_resource type="PackedScene" uid="uid://bqf3g8sdhojh0" path="res://scenes/actors/enemies/enemy.tscn" id="3_enemy"]
+[ext_resource type="PackedScene" uid="uid://8j4y8buyrtbp" path="res://scenes/actors/items/weapons/quality_sword.tscn" id="4_quality_sword"]
 
 [node name="DungeonEntrance" type="Node3D" unique_id=179366886]
 script = ExtResource("1_32fru")
@@ -26,3 +27,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.5, 2, 17.5)
 
 [node name="Enemy2" parent="." unique_id=1994838575 instance=ExtResource("3_enemy")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 2, 47.5)
+
+[node name="QualitySwordPickup" parent="." instance=ExtResource("4_quality_sword")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 2, 52.5)
