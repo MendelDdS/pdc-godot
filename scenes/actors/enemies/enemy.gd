@@ -23,7 +23,10 @@ var attack_target_cell: Vector2i
 var stun_timer: float = 0.0
 var stun_tween: Tween
 var body_rotation_tween: Tween
+var position_feedback_tween: Tween
 var reset_body_rotation_next_frame: bool = false
+var base_global_position: Vector3 = Vector3.ZERO
+var reset_position_next_frame: bool = false
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -33,6 +36,7 @@ func _ready() -> void:
 	body_material = StandardMaterial3D.new()
 	body_material.albedo_color = base_body_color
 	body.material_override = body_material
+	base_global_position = global_position
 	base_body_rotation_degrees = body.rotation_degrees
 
 func _physics_process(delta: float) -> void:
@@ -42,6 +46,9 @@ func _physics_process(delta: float) -> void:
 	if reset_body_rotation_next_frame:
 		reset_body_rotation_next_frame = false
 		body.rotation_degrees = base_body_rotation_degrees
+	if reset_position_next_frame:
+		reset_position_next_frame = false
+		global_position = base_global_position
 
 	if player == null or not is_instance_valid(player):
 		player = _find_player()
@@ -146,16 +153,22 @@ func _play_critical_damage_feedback() -> void:
 	body_material.albedo_color = Color(1.0, 0.85, 0.25, 1.0)
 	if body_rotation_tween:
 		body_rotation_tween.kill()
+	if position_feedback_tween:
+		position_feedback_tween.kill()
 	body.rotation_degrees = base_body_rotation_degrees
+	global_position = base_global_position
 
-	var original_pos := global_position
-	var recoil_pos := original_pos + (global_transform.basis.z.normalized() * Constants.TILE_SIZE * 0.28)
+	var recoil_pos := base_global_position + (global_transform.basis.z.normalized() * Constants.TILE_SIZE * 0.28)
+	position_feedback_tween = create_tween()
+	position_feedback_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	position_feedback_tween.tween_property(self, "global_position", recoil_pos, 0.08)
+	position_feedback_tween.tween_property(self, "global_position", base_global_position, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	position_feedback_tween.tween_callback(_finish_position_feedback)
+
 	body_rotation_tween = create_tween()
 	body_rotation_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	body_rotation_tween.tween_property(self, "global_position", recoil_pos, 0.08)
-	body_rotation_tween.parallel().tween_property(body, "rotation_degrees", base_body_rotation_degrees + Vector3(-10.0, 0.0, 13.0), 0.08)
+	body_rotation_tween.tween_property(body, "rotation_degrees", base_body_rotation_degrees + Vector3(-10.0, 0.0, 13.0), 0.08)
 	body_rotation_tween.parallel().tween_property(body_material, "albedo_color", base_body_color, 0.32)
-	body_rotation_tween.tween_property(self, "global_position", original_pos, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	body_rotation_tween.parallel().tween_property(body, "rotation_degrees", base_body_rotation_degrees + Vector3(4.0, 0.0, -6.0), 0.08)
 	body_rotation_tween.tween_property(body, "rotation_degrees", base_body_rotation_degrees, 0.10).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	body_rotation_tween.tween_callback(_finish_body_rotation_feedback)
@@ -181,6 +194,11 @@ func _finish_body_rotation_feedback() -> void:
 	body_rotation_tween = null
 	body.rotation_degrees = base_body_rotation_degrees
 	reset_body_rotation_next_frame = true
+
+func _finish_position_feedback() -> void:
+	position_feedback_tween = null
+	global_position = base_global_position
+	reset_position_next_frame = true
 
 func _world_to_cell(world_pos: Vector3) -> Vector2i:
 	return Vector2i(
