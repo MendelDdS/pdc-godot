@@ -6,6 +6,8 @@ class_name Player
 enum PlayerClass { WARRIOR, MAGE }
 
 @export var player_class: PlayerClass = PlayerClass.MAGE
+@export var warrior_starting_weapon_scene: PackedScene
+@export var mage_starting_weapon_scene: PackedScene
 
 const MOVE_DURATION: float = 0.35
 const ROTATE_DURATION: float = 0.3
@@ -17,10 +19,10 @@ const CRITICAL_ATTACK_WINDOW: float = 1.2
 const DEFAULT_ATTACK_DAMAGE: int = 20
 const DEFAULT_CRITICAL_ATTACK_DAMAGE: int = 60
 
-const SIMPLE_SWORD_SCENE = preload("res://scenes/actors/items/weapons/simple_sword.tscn")
-const SIMPLE_STAFF_SCENE = preload("res://scenes/actors/items/weapons/simple_staff.tscn")
-const SWORD_COMBAT_SCRIPT = preload("res://scenes/actors/player/sword_combat.gd")
-const STAFF_COMBAT_SCRIPT = preload("res://scenes/actors/player/staff_combat.gd")
+const COMBAT_SCRIPT_BY_WEAPON_KIND = {
+	"Sword": preload("res://scenes/actors/player/sword_combat.gd"),
+	"Staff": preload("res://scenes/actors/player/staff_combat.gd")
+}
 const DEFENSE_STANCE = {"pos": Vector3(0.5, 0.3, -0.8), "rot": Vector3(180, 0, 45)}
 
 @onready var health_component: HealthComponent = $HealthComponent
@@ -37,6 +39,8 @@ const DEFENSE_STANCE = {"pos": Vector3(0.5, 0.3, -0.8), "rot": Vector3(180, 0, 4
 
 var player_name: String = "Mendel"
 var is_moving: bool = false
+var moving_from_cell: Vector2i
+var moving_target_cell: Vector2i
 var is_rotating: bool = false
 var bob_time: float = 0.0
 var base_camera_y: float = 0.0
@@ -70,7 +74,11 @@ func _ready() -> void:
 
 	combat_ui.direction_changed.connect(_on_combat_direction_changed)
 
-	equip_weapon(_get_starting_weapon_scene(), false, global_position)
+	var starting_weapon_scene := _get_starting_weapon_scene()
+	if starting_weapon_scene != null:
+		equip_weapon(starting_weapon_scene, false, global_position)
+	else:
+		push_warning("Player sem arma inicial configurada.")
 	melee_ray.add_exception(self)
 
 func _process(delta: float) -> void:
@@ -96,6 +104,9 @@ func handle_combat_input() -> void:
 	is_defending = Input.is_action_pressed("Item Passive")
 	if not is_defending:
 		defense_pose_ready = false
+
+	if active_weapon_combat == null:
+		return
 
 	if _is_using_staff():
 		if Input.is_action_just_pressed("Item Action") and can_attack and not is_defending:
@@ -132,13 +143,13 @@ func _consume_critical_attack_window() -> bool:
 	return true
 
 func _get_starting_weapon_scene() -> PackedScene:
-	return SIMPLE_STAFF_SCENE if player_class == PlayerClass.MAGE else SIMPLE_SWORD_SCENE
+	return mage_starting_weapon_scene if player_class == PlayerClass.MAGE else warrior_starting_weapon_scene
 
 func _is_using_staff() -> bool:
 	return current_weapon != null and current_weapon.has_method("is_staff") and current_weapon.is_staff()
 
 func _is_using_sword() -> bool:
-	return current_weapon == null or not _is_using_staff()
+	return current_weapon != null and not _is_using_staff()
 
 func play_block_impact_feedback() -> void:
 	var original_pos := weapon_pivot.position
@@ -193,7 +204,7 @@ func update_weapon_stance(delta: float) -> void:
 		block_ready_msec = Time.get_ticks_msec()
 
 func perform_attack() -> void:
-	if is_attacking or not can_attack:
+	if is_attacking or not can_attack or active_weapon_combat == null:
 		return
 		
 	is_attacking = true
@@ -369,12 +380,23 @@ func _refresh_weapon_combat() -> void:
 		active_weapon_combat.queue_free()
 		active_weapon_combat = null
 
-	var combat_script: Script = STAFF_COMBAT_SCRIPT if _is_using_staff() else SWORD_COMBAT_SCRIPT
+	var weapon_kind := _get_current_weapon_kind()
+	if not COMBAT_SCRIPT_BY_WEAPON_KIND.has(weapon_kind):
+		push_error("Sem combat configurado para arma do tipo: %s" % weapon_kind)
+		return
+
+	var combat_script: Script = COMBAT_SCRIPT_BY_WEAPON_KIND[weapon_kind]
 	active_weapon_combat = combat_script.new()
-	active_weapon_combat.name = "StaffCombat" if _is_using_staff() else "SwordCombat"
+	active_weapon_combat.name = "%sCombat" % weapon_kind
 	add_child(active_weapon_combat)
 	active_weapon_combat.setup(combat_ui, weapon_pivot, camera)
 	active_weapon_combat.reset()
+
+func _get_current_weapon_kind() -> String:
+	if current_weapon != null and current_weapon.has_method("get_weapon_kind"):
+		return current_weapon.get_weapon_kind()
+
+	return ""
 
 func _on_combat_direction_changed(dir_index: int) -> void:
 	if active_weapon_combat == null:
@@ -383,7 +405,7 @@ func _on_combat_direction_changed(dir_index: int) -> void:
 	active_weapon_combat.handle_direction_changed(dir_index, is_attacking, combat_ui.is_locked)
 
 func handle_movement_input() -> void:
-	if is_moving or is_rotating:
+	if is_moving or is_rotating or is_attacking:
 		return
 
 	if Input.is_action_pressed("Foward"):
@@ -408,6 +430,8 @@ func move_in_direction(direction: Vector3, ray: RayCast3D, is_strafe: bool = fal
 		return
 
 	is_moving = true
+	moving_from_cell = _world_to_cell(previous_pos)
+	moving_target_cell = _world_to_cell(target_pos)
 
 	var tween = create_tween().set_parallel(true)
 	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
@@ -452,10 +476,20 @@ func _try_equip_pickup_weapon(weapon_scene: PackedScene, pickup: Node, drop_posi
 func _has_enemy_on_tile(target_pos: Vector3) -> bool:
 	var target_cell := _world_to_cell(target_pos)
 	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if enemy.has_method("blocks_player_cell") and enemy.blocks_player_cell(target_cell):
+			return true
+		if enemy.has_method("occupies_cell") and enemy.occupies_cell(target_cell):
+			return true
 		if enemy.has_method("get_current_cell") and enemy.get_current_cell() == target_cell:
 			return true
 
 	return false
+
+func occupies_cell(cell: Vector2i) -> bool:
+	if _world_to_cell(global_position) == cell:
+		return true
+
+	return is_moving and (moving_from_cell == cell or moving_target_cell == cell)
 
 func _world_to_cell(world_pos: Vector3) -> Vector2i:
 	return Vector2i(

@@ -65,6 +65,9 @@ func roll_critical_attack_damage() -> int:
 func get_magic_range() -> float:
 	return magic_range
 
+func get_weapon_kind() -> String:
+	return weapon_kind
+
 func is_sword() -> bool:
 	return weapon_kind == "Sword"
 

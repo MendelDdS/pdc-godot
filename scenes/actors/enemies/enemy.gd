@@ -1,12 +1,14 @@
 extends CharacterBody3D
 class_name Enemy
 
-enum State { IDLE, ATTACK, STUNNED, DEAD }
+enum State { IDLE, CHASE, ATTACK, STUNNED, DEAD }
 
 @export var attack_damage: int = 10
 @export var attack_windup: float = 0.35
 @export var attack_cooldown: float = 1.0
 @export var stun_duration: float = 1.4
+@export var vision_range_tiles: int = 4
+@export var move_duration: float = 0.7
 
 @onready var health_component: HealthComponent = $HealthComponent
 @onready var body: MeshInstance3D = $EnemyBody
@@ -27,6 +29,11 @@ var position_feedback_tween: Tween
 var reset_body_rotation_next_frame: bool = false
 var base_global_position: Vector3 = Vector3.ZERO
 var reset_position_next_frame: bool = false
+var has_detected_player: bool = false
+var is_moving: bool = false
+var moving_from_cell: Vector2i
+var moving_target_cell: Vector2i
+var move_tween: Tween
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -59,14 +66,24 @@ func _physics_process(delta: float) -> void:
 
 	match state:
 		State.IDLE:
-			if cooldown_timer <= 0.0 and _is_player_in_front_tile():
+			if _is_player_in_front_tile() and cooldown_timer <= 0.0:
+				has_detected_player = true
 				_start_attack()
+			elif _can_see_player():
+				has_detected_player = true
+				state = State.CHASE
+		State.CHASE:
+			_process_chase()
 		State.ATTACK:
 			_process_attack(delta)
 		State.STUNNED:
 			_process_stunned(delta)
 
 func _start_attack() -> void:
+	if is_moving:
+		return
+
+	has_detected_player = true
 	state = State.ATTACK
 	attack_timer = attack_windup
 	attack_has_hit = false
@@ -80,7 +97,7 @@ func _process_attack(delta: float) -> void:
 		_apply_attack_hit()
 
 	if attack_timer <= 0.0:
-		state = State.IDLE
+		state = State.CHASE if has_detected_player else State.IDLE
 		cooldown_timer = attack_cooldown
 
 func _apply_attack_hit() -> void:
@@ -101,6 +118,7 @@ func stun(duration: float) -> void:
 	state = State.STUNNED
 	stun_timer = duration
 	cooldown_timer = attack_cooldown
+	_stop_movement()
 	_reset_body_rotation()
 	_play_stun_feedback()
 
@@ -108,15 +126,106 @@ func _process_stunned(delta: float) -> void:
 	stun_timer -= delta
 	if stun_timer <= 0.0:
 		_reset_body_rotation()
-		state = State.IDLE
+		state = State.CHASE if has_detected_player else State.IDLE
 		cooldown_timer = attack_cooldown
 
 func _is_player_in_front_tile() -> bool:
 	return _get_front_cell() == _world_to_cell(player.global_position)
 
 func _get_front_cell() -> Vector2i:
-	var front_pos := global_position + (-global_transform.basis.z.normalized() * Constants.TILE_SIZE)
-	return _world_to_cell(front_pos)
+	return get_current_cell() + _get_forward_cell_direction()
+
+func _can_see_player() -> bool:
+	var current_cell: Vector2i = get_current_cell()
+	var player_cell: Vector2i = _world_to_cell(player.global_position)
+	var forward_dir: Vector2i = _get_forward_cell_direction()
+
+	for distance in range(1, vision_range_tiles + 1):
+		if _is_step_blocked(current_cell + (forward_dir * (distance - 1)), forward_dir):
+			return false
+		var checked_cell: Vector2i = current_cell + (forward_dir * distance)
+		if checked_cell == player_cell:
+			return true
+
+	return false
+
+func _process_chase() -> void:
+	if is_moving:
+		return
+
+	if _is_player_in_front_tile():
+		if cooldown_timer <= 0.0:
+			_start_attack()
+		return
+
+	var current_cell := get_current_cell()
+	var player_cell := _world_to_cell(player.global_position)
+	var distance := _manhattan_distance(current_cell, player_cell)
+	if distance > vision_range_tiles:
+		has_detected_player = false
+		state = State.IDLE
+		return
+
+	if distance <= 1:
+		_face_cell(player_cell)
+		return
+
+	var step_dir := _get_chase_step_direction(current_cell, player_cell)
+	if step_dir == Vector2i.ZERO:
+		return
+
+	_face_direction(step_dir)
+	_start_tile_move(step_dir)
+
+func _get_chase_step_direction(from_cell: Vector2i, to_cell: Vector2i) -> Vector2i:
+	var delta := to_cell - from_cell
+	var primary := Vector2i(_int_sign(delta.x), 0) if absi(delta.x) >= absi(delta.y) else Vector2i(0, _int_sign(delta.y))
+	var secondary := Vector2i(0, _int_sign(delta.y)) if primary.x != 0 else Vector2i(_int_sign(delta.x), 0)
+
+	if _can_step_to(from_cell, primary):
+		return primary
+	if _can_step_to(from_cell, secondary):
+		return secondary
+
+	return Vector2i.ZERO
+
+func _can_step_to(from_cell: Vector2i, direction: Vector2i) -> bool:
+	if direction == Vector2i.ZERO:
+		return false
+
+	var target_cell := from_cell + direction
+	if player.has_method("occupies_cell") and player.occupies_cell(target_cell):
+		return false
+	if target_cell == _world_to_cell(player.global_position):
+		return false
+	if _has_enemy_on_cell(target_cell):
+		return false
+
+	return not _is_step_blocked(from_cell, direction)
+
+func _start_tile_move(direction: Vector2i) -> void:
+	is_moving = true
+	moving_from_cell = _world_to_cell(global_position)
+	moving_target_cell = moving_from_cell + direction
+	var target_pos := _cell_to_world(moving_target_cell)
+	_face_direction(direction)
+
+	move_tween = create_tween()
+	move_tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	move_tween.tween_property(self, "global_position", target_pos, move_duration)
+	move_tween.tween_callback(_finish_tile_move)
+
+func _finish_tile_move() -> void:
+	global_position = _cell_to_world(moving_target_cell)
+	is_moving = false
+	base_global_position = global_position
+	move_tween = null
+
+func _stop_movement() -> void:
+	if move_tween:
+		move_tween.kill()
+		move_tween = null
+	is_moving = false
 
 func _play_attack_feedback() -> void:
 	var origin := global_position
@@ -135,11 +244,17 @@ func _on_damage_taken() -> void:
 
 func on_hit_by_player(attacker: Player) -> void:
 	player = attacker
+	has_detected_player = true
+	if state == State.IDLE:
+		state = State.CHASE
 	_look_at_flat(player.global_position)
 	_play_damage_feedback()
 
 func on_critical_hit_by_player(attacker: Player) -> void:
 	player = attacker
+	has_detected_player = true
+	if state == State.IDLE:
+		state = State.CHASE
 	_look_at_flat(player.global_position)
 	_play_critical_damage_feedback()
 
@@ -207,13 +322,89 @@ func _world_to_cell(world_pos: Vector3) -> Vector2i:
 	)
 
 func get_current_cell() -> Vector2i:
+	if is_moving:
+		return moving_target_cell
+
 	return _world_to_cell(global_position)
+
+func occupies_cell(cell: Vector2i) -> bool:
+	if _world_to_cell(global_position) == cell:
+		return true
+
+	return is_moving and (moving_from_cell == cell or moving_target_cell == cell)
+
+func blocks_player_cell(cell: Vector2i) -> bool:
+	if occupies_cell(cell):
+		return true
+
+	return state == State.ATTACK and attack_target_cell == cell
+
+func _manhattan_distance(a: Vector2i, b: Vector2i) -> int:
+	return absi(a.x - b.x) + absi(a.y - b.y)
+
+func _get_forward_cell_direction() -> Vector2i:
+	var forward := -global_transform.basis.z.normalized()
+	if absf(forward.x) >= absf(forward.z):
+		return Vector2i(_int_sign(forward.x), 0)
+
+	return Vector2i(0, _int_sign(forward.z))
+
+func _is_step_blocked(from_cell: Vector2i, direction: Vector2i) -> bool:
+	var from_pos := _cell_to_world(from_cell) + Vector3(0.0, 1.0, 0.0)
+	var to_pos := from_pos + Vector3(direction.x, 0.0, direction.y) * Constants.TILE_SIZE
+	var query := PhysicsRayQueryParameters3D.create(from_pos, to_pos)
+	query.exclude = [self, player]
+
+	return not get_world_3d().direct_space_state.intersect_ray(query).is_empty()
+
+func _has_enemy_on_cell(cell: Vector2i) -> bool:
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if enemy == self:
+			continue
+		if enemy.has_method("occupies_cell") and enemy.occupies_cell(cell):
+			return true
+		if enemy.has_method("get_current_cell") and enemy.get_current_cell() == cell:
+			return true
+
+	return false
+
+func _cell_to_world(cell: Vector2i) -> Vector3:
+	var half_tile := Constants.TILE_SIZE * 0.5
+	return Vector3(
+		(cell.x * Constants.TILE_SIZE) + half_tile,
+		global_position.y,
+		(cell.y * Constants.TILE_SIZE) + half_tile
+	)
+
+func _face_cell(cell: Vector2i) -> void:
+	var current_cell := get_current_cell()
+	var delta := cell - current_cell
+	if absi(delta.x) >= absi(delta.y):
+		_face_direction(Vector2i(_int_sign(delta.x), 0))
+	else:
+		_face_direction(Vector2i(0, _int_sign(delta.y)))
+
+func _face_direction(direction: Vector2i) -> void:
+	if direction == Vector2i.ZERO:
+		return
+
+	var target_pos := global_position + Vector3(direction.x, 0.0, direction.y) * Constants.TILE_SIZE
+	_look_at_flat(target_pos)
+
+func _int_sign(value: float) -> int:
+	if value > 0.0:
+		return 1
+	if value < 0.0:
+		return -1
+	return 0
 
 func _look_at_flat(target_pos: Vector3) -> void:
 	var look_target := Vector3(target_pos.x, global_position.y, target_pos.z)
 	if global_position.distance_squared_to(look_target) > 0.01:
+		var previous_direction := _get_forward_cell_direction()
 		look_at(look_target, Vector3.UP)
-		cooldown_timer = attack_cooldown
+		if _get_forward_cell_direction() != previous_direction:
+			cooldown_timer = attack_cooldown
 
 func _find_player() -> Player:
 	return _find_player_in(get_tree().current_scene)
