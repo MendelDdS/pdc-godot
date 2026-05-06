@@ -1,3 +1,3 @@
 extends Node
 
-const TILE_SIZE = 5.0
+const TILE_SIZE = 6.0

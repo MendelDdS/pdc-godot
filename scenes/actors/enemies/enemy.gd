@@ -3,7 +3,7 @@ class_name Enemy
 
 enum State { IDLE, CHASE, ATTACK, STUNNED, DEAD }
 
-@export var attack_damage: int = 10
+@export var attack_damage: int = 5
 @export var attack_windup: float = 0.35
 @export var attack_cooldown: float = 1.0
 @export var stun_duration: float = 1.4
@@ -271,13 +271,15 @@ func _play_critical_damage_feedback() -> void:
 	if position_feedback_tween:
 		position_feedback_tween.kill()
 	body.rotation_degrees = base_body_rotation_degrees
-	global_position = base_global_position
+	var anchor_pos := _cell_to_world(get_current_cell())
+	global_position = anchor_pos
+	base_global_position = anchor_pos
 
-	var recoil_pos := base_global_position + (global_transform.basis.z.normalized() * Constants.TILE_SIZE * 0.28)
+	var recoil_pos := anchor_pos + (global_transform.basis.z.normalized() * Constants.TILE_SIZE * 0.22)
 	position_feedback_tween = create_tween()
 	position_feedback_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	position_feedback_tween.tween_property(self, "global_position", recoil_pos, 0.08)
-	position_feedback_tween.tween_property(self, "global_position", base_global_position, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	position_feedback_tween.tween_property(self, "global_position", anchor_pos, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	position_feedback_tween.tween_callback(_finish_position_feedback)
 
 	body_rotation_tween = create_tween()

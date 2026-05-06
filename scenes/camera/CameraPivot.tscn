@@ -6,10 +6,27 @@
 script = ExtResource("1_scdyt")
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1419696167]
+transform = Transform3D(1, 0, 0, 0, 0.99862945, 0.05233596, 0, -0.05233596, 0.99862945, 0, 0, 0)
+
+[node name="PlayerLight" type="OmniLight3D" parent="Camera3D" unique_id=1625141012]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.15, -0.35)
+light_color = Color(1, 0.72, 0.45, 1)
+light_energy = 1.35
+omni_range = 12.0
+omni_attenuation = 1.1
 
 [node name="MeleeRay" type="RayCast3D" parent="Camera3D" unique_id=987654321]
 enabled = false
-target_position = Vector3(0, 0, -5.5)
+target_position = Vector3(0, 0, -7.5)
 collision_mask = 2
 
 [node name="WeaponPivot" type="Node3D" parent="Camera3D" unique_id=123456789]
+
+[node name="SpotLight3D" type="SpotLight3D" parent="Camera3D" unique_id=495425737]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1)
+light_color = Color(1, 0.72156864, 0.4509804, 1)
+light_specular = 0.0
+spot_range = 6.0
+spot_attenuation = -1.5
+spot_angle = 75.0
+spot_angle_attenuation = 5.098239

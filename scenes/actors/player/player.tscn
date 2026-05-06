@@ -5,8 +5,8 @@
 [ext_resource type="PackedScene" uid="uid://b3yxp8nmtcyi" path="res://scenes/components/health_component.tscn" id="2_6b2fh"]
 [ext_resource type="PackedScene" uid="uid://eent4xi3008p" path="res://scenes/ui/combat_ui.tscn" id="2_combat"]
 [ext_resource type="PackedScene" uid="uid://t4el21g5ilqe" path="res://scenes/camera/CameraPivot.tscn" id="2_oj104"]
-[ext_resource type="PackedScene" uid="uid://dh4s2qj4kx12i" path="res://scenes/actors/items/weapons/simple_sword.tscn" id="2_sword_weapon"]
 [ext_resource type="PackedScene" uid="uid://ciofb6tsj0kku" path="res://scenes/actors/items/weapons/simple_staff.tscn" id="2_staff_weapon"]
+[ext_resource type="PackedScene" uid="uid://dh4s2qj4kx12i" path="res://scenes/actors/items/weapons/simple_sword.tscn" id="2_sword_weapon"]
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_l17oj"]
 height = 1.8
@@ -16,6 +16,7 @@ height = 1.8
 
 [node name="Player" type="CharacterBody3D" unique_id=2122427803]
 script = ExtResource("1_1fipg")
+player_class = 0
 warrior_starting_weapon_scene = ExtResource("2_sword_weapon")
 mage_starting_weapon_scene = ExtResource("2_staff_weapon")
 
@@ -23,13 +24,14 @@ mage_starting_weapon_scene = ExtResource("2_staff_weapon")
 script = ExtResource("1_watk3")
 
 [node name="CameraPivot" parent="." unique_id=1839286025 instance=ExtResource("2_oj104")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4785786, -0.40341085)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 1.5)
 
 [node name="HealthComponent" parent="." unique_id=1503925823 instance=ExtResource("2_6b2fh")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
 
 [node name="Body" type="MeshInstance3D" parent="." unique_id=1691970083]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+visible = false
 mesh = SubResource("CapsuleMesh_l17oj")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1762347546]
@@ -38,18 +40,18 @@ shape = SubResource("CapsuleShape3D_l17oj")
 
 [node name="LeftRay" type="RayCast3D" parent="." unique_id=1746288839]
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 1, 0)
-target_position = Vector3(0, 0, -2)
+target_position = Vector3(0, 0, -3.5)
 
 [node name="ForwardRay" type="RayCast3D" parent="." unique_id=2036658384]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
-target_position = Vector3(0, 0, -2)
+target_position = Vector3(0, 0, -3.5)
 
 [node name="BackRay" type="RayCast3D" parent="." unique_id=839611111]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
-target_position = Vector3(0, 0, 2)
+target_position = Vector3(0, 0, 3.5)
 
 [node name="RightRay" type="RayCast3D" parent="." unique_id=421685770]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 1, 0)
-target_position = Vector3(0, 0, -2)
+target_position = Vector3(0, 0, -3.5)
 
 [node name="CombatUI" parent="." unique_id=813536664 instance=ExtResource("2_combat")]

@@ -424,6 +424,7 @@ func handle_movement_input() -> void:
 func move_in_direction(direction: Vector3, ray: RayCast3D, is_strafe: bool = false, strafe_dir: int = 0) -> void:
 	var previous_pos := global_position
 	var target_pos = global_position + direction.normalized() * Constants.TILE_SIZE
+	ray.force_raycast_update()
 
 	if ray.is_colliding() || _has_enemy_on_tile(target_pos):
 		play_wall_bump_animation(direction)
