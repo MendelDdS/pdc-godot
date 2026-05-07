@@ -8,6 +8,9 @@ const BOTTOM_CROSS_TRANSITION_DURATION: float = 0.45
 const BOTTOM_CROSS_ARC_HEIGHT: float = 0.85
 const DEFENSE_READY_DISTANCE: float = 0.04
 const DEFENSE_READY_ROT_DOT: float = 0.995
+const BREATH_FREQ: float = 1.45
+const BREATH_POS_AMOUNT: Vector3 = Vector3(0.018, 0.028, 0.012)
+const BREATH_ROT_AMOUNT: Vector3 = Vector3(0.9, 0.35, 0.7)
 const STANCES = {
 	0: {"pos": Vector3(0.5, -0.3, -1), "rot": Vector3(0, -90, 90)},
 	1: {"pos": Vector3(0, 0.7, -1), "rot": Vector3(0, -90, 0)},
@@ -30,6 +33,7 @@ var stance_to_index: int = 0
 var stance_actual_start_pos: Vector3 = Vector3.ZERO
 var stance_actual_start_quat: Quaternion = Quaternion.IDENTITY
 var stance_transition_elapsed: float = 0.0
+var breath_time: float = 0.0
 
 func setup(ui: CombatUI, pivot: Node3D, player_camera: Camera3D) -> void:
 	combat_ui = ui
@@ -42,8 +46,9 @@ func reset() -> void:
 	target_stance_rot = STANCES[0]["rot"]
 	stance_transitioning = false
 	stance_transition_elapsed = 0.0
+	breath_time = randf() * TAU
 
-func update_weapon_stance(delta: float, is_defending: bool, defense_stance: Dictionary) -> Dictionary:
+func update_weapon_stance(delta: float, is_defending: bool, defense_stance: Dictionary, is_idle: bool = false) -> Dictionary:
 	var base_target_pos: Vector3 = target_stance_pos
 	var base_target_quat := _degrees_to_quat(target_stance_rot)
 
@@ -75,6 +80,11 @@ func update_weapon_stance(delta: float, is_defending: bool, defense_stance: Dict
 		if progress >= 1.0:
 			stance_transitioning = false
 	else:
+		if is_idle and not is_defending:
+			var breath := _get_breath_offset(delta)
+			base_target_pos += breath["pos"]
+			base_target_quat *= _local_quat(breath["rot"])
+
 		var rotate_speed := DEFENSE_TRANSITION_SPEED if is_defending else STANCE_ROTATE_SPEED
 		var weight := clampf(delta * rotate_speed, 0.0, 1.0)
 		weapon_pivot.position = weapon_pivot.position.lerp(base_target_pos, weight)
@@ -87,6 +97,15 @@ func update_weapon_stance(delta: float, is_defending: bool, defense_stance: Dict
 		defense_ready = position_ready and rotation_ready
 
 	return {"defense_ready": defense_ready}
+
+func _get_breath_offset(delta: float) -> Dictionary:
+	breath_time += delta * BREATH_FREQ
+	var wave := sin(breath_time)
+	var side_wave := sin(breath_time * 0.53 + 1.2)
+	return {
+		"pos": Vector3(BREATH_POS_AMOUNT.x * side_wave, BREATH_POS_AMOUNT.y * wave, BREATH_POS_AMOUNT.z * wave),
+		"rot": Vector3(BREATH_ROT_AMOUNT.x * wave, BREATH_ROT_AMOUNT.y * side_wave, BREATH_ROT_AMOUNT.z * side_wave)
+	}
 
 func handle_direction_changed(dir_index: int, is_attacking: bool, ui_locked: bool) -> void:
 	if is_attacking or ui_locked:

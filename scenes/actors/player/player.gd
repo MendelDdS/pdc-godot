@@ -8,6 +8,13 @@ enum PlayerClass { WARRIOR, MAGE }
 @export var player_class: PlayerClass = PlayerClass.MAGE
 @export var warrior_starting_weapon_scene: PackedScene
 @export var mage_starting_weapon_scene: PackedScene
+@export var max_stamina: float = 100.0
+@export var stamina_regen_per_second: float = 18.0
+@export var sword_attack_stamina_cost: float = 18.0
+@export var block_stamina_cost: float = 14.0
+@export var max_mana: float = 100.0
+@export var mana_regen_per_second: float = 10.0
+@export var spell_mana_cost: float = 22.0
 
 const MOVE_DURATION: float = 0.35
 const ROTATE_DURATION: float = 0.3
@@ -36,6 +43,7 @@ const DEFENSE_STANCE = {"pos": Vector3(0.5, 0.3, -0.8), "rot": Vector3(180, 0, 4
 @onready var right_ray: RayCast3D = $RightRay
 @onready var melee_ray: RayCast3D = $CameraPivot/Camera3D/MeleeRay
 @onready var weapon_attack_animator: WeaponAttackAnimator = $WeaponAttackAnimator
+@onready var resources_ui: CanvasLayer = $PlayerResourcesUI
 
 var player_name: String = "Mendel"
 var is_moving: bool = false
@@ -57,6 +65,8 @@ var critical_attack_until_msec: int = -100000
 var active_attack_is_critical: bool = false
 var queued_magic_is_critical: bool = false
 var can_attack: bool = true
+var stamina: float = 100.0
+var mana: float = 100.0
 
 const ATTACK_RECOVERY_DELAY: float = 0.0
 
@@ -73,6 +83,10 @@ func _ready() -> void:
 	health_component.damage_taken.connect(_on_take_damage)
 
 	combat_ui.direction_changed.connect(_on_combat_direction_changed)
+	stamina = max_stamina
+	mana = max_mana
+	resources_ui.setup_for_class(player_class == PlayerClass.MAGE)
+	_update_resources_ui()
 
 	var starting_weapon_scene := _get_starting_weapon_scene()
 	if starting_weapon_scene != null:
@@ -85,6 +99,7 @@ func _process(delta: float) -> void:
 	handle_head_bob(delta)
 	handle_movement_input()
 	handle_combat_input()
+	_update_resources(delta)
 	_update_attack_recovery(delta)
 	update_weapon_stance(delta)
 
@@ -101,7 +116,7 @@ func handle_combat_input() -> void:
 		block_ready_msec = -100000
 		defense_pose_ready = false
 
-	is_defending = Input.is_action_pressed("Item Passive")
+	is_defending = Input.is_action_pressed("Item Passive") and _can_defend()
 	if not is_defending:
 		defense_pose_ready = false
 
@@ -109,18 +124,18 @@ func handle_combat_input() -> void:
 		return
 
 	if _is_using_staff():
-		if Input.is_action_just_pressed("Item Action") and can_attack and not is_defending:
+		if Input.is_action_just_pressed("Item Action") and can_attack and not is_defending and _has_mana_for_spell():
 			active_weapon_combat.start_draw(combat_ui.current_direction)
 		elif Input.is_action_just_released("Item Action") and active_weapon_combat.is_drawing():
 			var cast_result: Dictionary = active_weapon_combat.finish_draw()
-			if cast_result["valid"]:
+			if cast_result["valid"] and _consume_mana(spell_mana_cost):
 				queued_magic_is_critical = cast_result["critical"]
 				perform_attack()
 	elif Input.is_action_just_pressed("Item Action") and can_attack and not is_defending:
 		perform_attack()
 
 func is_blocking() -> bool:
-	return is_defending
+	return is_defending and _can_defend()
 
 func is_perfect_blocking() -> bool:
 	if not is_defending or not defense_pose_ready:
@@ -152,6 +167,9 @@ func _is_using_sword() -> bool:
 	return current_weapon != null and not _is_using_staff()
 
 func play_block_impact_feedback() -> void:
+	if _is_using_sword():
+		_consume_stamina(block_stamina_cost)
+
 	var original_pos := weapon_pivot.position
 	var original_quat := weapon_pivot.quaternion
 	var recoil_pos := original_pos + Vector3(0.04, 0.05, 0.24)
@@ -194,17 +212,56 @@ func _update_attack_recovery(delta: float) -> void:
 	if attack_recovery_timer <= 0.0:
 		attack_recovering = false
 
+func _update_resources(delta: float) -> void:
+	if _is_using_sword() and not is_attacking:
+		stamina = minf(stamina + stamina_regen_per_second * delta, max_stamina)
+	if _is_using_staff() and not is_attacking:
+		mana = minf(mana + mana_regen_per_second * delta, max_mana)
+	_update_resources_ui()
+
+func _update_resources_ui() -> void:
+	if resources_ui == null:
+		return
+
+	resources_ui.set_health(health_component.current_health, health_component.max_health)
+	resources_ui.set_stamina(stamina, max_stamina)
+	resources_ui.set_mana(mana, max_mana)
+
+func _can_defend() -> bool:
+	return not _is_using_sword() or stamina > 0.0
+
+func _has_mana_for_spell() -> bool:
+	return mana >= spell_mana_cost
+
+func _consume_stamina(amount: float) -> bool:
+	if stamina < amount:
+		return false
+
+	stamina -= amount
+	_update_resources_ui()
+	return true
+
+func _consume_mana(amount: float) -> bool:
+	if mana < amount:
+		return false
+
+	mana -= amount
+	_update_resources_ui()
+	return true
+
 func update_weapon_stance(delta: float) -> void:
 	if active_weapon_combat == null or is_attacking or attack_recovering:
 		return
 
-	var result: Dictionary = active_weapon_combat.update_weapon_stance(delta, is_defending, DEFENSE_STANCE)
+	var result: Dictionary = active_weapon_combat.update_weapon_stance(delta, is_defending, DEFENSE_STANCE, not is_moving and not is_rotating)
 	if is_defending and not defense_pose_ready and result.get("defense_ready", false):
 		defense_pose_ready = true
 		block_ready_msec = Time.get_ticks_msec()
 
 func perform_attack() -> void:
 	if is_attacking or not can_attack or active_weapon_combat == null:
+		return
+	if _is_using_sword() and not _consume_stamina(sword_attack_stamina_cost):
 		return
 		
 	is_attacking = true
@@ -545,12 +602,15 @@ func _toggle_mouse_capture() -> void:
 
 func _on_died() -> void:
 	print(player_name + " died!")
+	_update_resources_ui()
 	#queue_free()
 
 func _on_health_changed() -> void:
 	print("Cura recebida! HP: ", health_component.current_health)
+	_update_resources_ui()
 
 func _on_take_damage() -> void:
+	_update_resources_ui()
 	_play_damage_camera_shake()
 
 func _play_damage_camera_shake() -> void:

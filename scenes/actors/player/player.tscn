@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" uid="uid://t4el21g5ilqe" path="res://scenes/camera/CameraPivot.tscn" id="2_oj104"]
 [ext_resource type="PackedScene" uid="uid://ciofb6tsj0kku" path="res://scenes/actors/items/weapons/simple_staff.tscn" id="2_staff_weapon"]
 [ext_resource type="PackedScene" uid="uid://dh4s2qj4kx12i" path="res://scenes/actors/items/weapons/simple_sword.tscn" id="2_sword_weapon"]
+[ext_resource type="PackedScene" uid="uid://cq7ssam8cx4cn" path="res://scenes/ui/player_resources_ui.tscn" id="3_resources_ui"]
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_l17oj"]
 height = 1.8
@@ -16,7 +17,6 @@ height = 1.8
 
 [node name="Player" type="CharacterBody3D" unique_id=2122427803]
 script = ExtResource("1_1fipg")
-player_class = 0
 warrior_starting_weapon_scene = ExtResource("2_sword_weapon")
 mage_starting_weapon_scene = ExtResource("2_staff_weapon")
 
@@ -55,3 +55,5 @@ transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 1
 target_position = Vector3(0, 0, -3.5)
 
 [node name="CombatUI" parent="." unique_id=813536664 instance=ExtResource("2_combat")]
+
+[node name="PlayerResourcesUI" parent="." unique_id=188777756 instance=ExtResource("3_resources_ui")]

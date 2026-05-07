@@ -1,0 +1,78 @@
+[gd_scene format=3 uid="uid://cq7ssam8cx4cn"]
+
+[ext_resource type="Script" path="res://scenes/ui/player_resources_ui.gd" id="1_resources"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bg"]
+bg_color = Color(0.04, 0.04, 0.045, 0.78)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_health"]
+bg_color = Color(0.68, 0.08, 0.07, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_stamina"]
+bg_color = Color(0.18, 0.62, 0.22, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_mana"]
+bg_color = Color(0.13, 0.36, 0.86, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="PlayerResourcesUI" type="CanvasLayer"]
+script = ExtResource("1_resources")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 264.0
+offset_bottom = 96.0
+
+[node name="Bars" type="VBoxContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 8
+
+[node name="HealthBar" type="ProgressBar" parent="Root/Bars"]
+custom_minimum_size = Vector2(240, 18)
+layout_mode = 2
+show_percentage = false
+theme_override_styles/background = SubResource("StyleBoxFlat_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_health")
+max_value = 100.0
+value = 100.0
+
+[node name="StaminaBar" type="ProgressBar" parent="Root/Bars"]
+custom_minimum_size = Vector2(240, 14)
+layout_mode = 2
+show_percentage = false
+theme_override_styles/background = SubResource("StyleBoxFlat_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_stamina")
+max_value = 100.0
+value = 100.0
+
+[node name="ManaBar" type="ProgressBar" parent="Root/Bars"]
+custom_minimum_size = Vector2(240, 14)
+layout_mode = 2
+show_percentage = false
+theme_override_styles/background = SubResource("StyleBoxFlat_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_mana")
+max_value = 100.0
+value = 100.0

@@ -23,7 +23,7 @@ func take_damage(damage: int) -> void:
 
 func heal_entity(value) -> void:
 	current_health += value
-	current_health = min(current_health, 100)
+	current_health = min(current_health, max_health)
 
 	emit_signal("healing")
 

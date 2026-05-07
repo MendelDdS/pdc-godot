@@ -8,6 +8,9 @@ const DEFENSE_TRANSITION_SPEED: float = 28.0
 const STANCE_ROTATE_SPEED: float = 12.0
 const DEFENSE_READY_DISTANCE: float = 0.04
 const DEFENSE_READY_ROT_DOT: float = 0.995
+const BREATH_FREQ: float = 1.3
+const BREATH_POS_AMOUNT: Vector3 = Vector3(0.014, 0.024, 0.01)
+const BREATH_ROT_AMOUNT: Vector3 = Vector3(0.65, 0.25, 0.55)
 const MAGIC_CRITICAL_MAX_TIME: float = 0.3
 const MAGIC_SPELL_PATTERNS: Array[Array] = [
 	[5, 1, 2],
@@ -25,6 +28,7 @@ var draw_closed: bool = false
 var sequence: Array[int] = []
 var sequence_times: Array[int] = []
 var drawn_edges: Dictionary = {}
+var breath_time: float = 0.0
 
 func setup(ui: CombatUI, pivot: Node3D, player_camera: Camera3D) -> void:
 	combat_ui = ui
@@ -110,8 +114,9 @@ func reset() -> void:
 	draw_invalid = false
 	draw_closed = false
 	_clear_draw()
+	breath_time = randf() * TAU
 
-func update_weapon_stance(delta: float, is_defending: bool, defense_stance: Dictionary) -> Dictionary:
+func update_weapon_stance(delta: float, is_defending: bool, defense_stance: Dictionary, is_idle: bool = false) -> Dictionary:
 	if drawing:
 		return {"defense_ready": false}
 
@@ -120,6 +125,10 @@ func update_weapon_stance(delta: float, is_defending: bool, defense_stance: Dict
 	if is_defending:
 		base_target_pos = defense_stance["pos"]
 		base_target_quat = _degrees_to_quat(defense_stance["rot"])
+	elif is_idle:
+		var breath := _get_breath_offset(delta)
+		base_target_pos += breath["pos"]
+		base_target_quat *= _local_quat(breath["rot"])
 
 	var rotate_speed := DEFENSE_TRANSITION_SPEED if is_defending else STANCE_ROTATE_SPEED
 	var weight := clampf(delta * rotate_speed, 0.0, 1.0)
@@ -133,6 +142,15 @@ func update_weapon_stance(delta: float, is_defending: bool, defense_stance: Dict
 		defense_ready = position_ready and rotation_ready
 
 	return {"defense_ready": defense_ready}
+
+func _get_breath_offset(delta: float) -> Dictionary:
+	breath_time += delta * BREATH_FREQ
+	var wave := sin(breath_time)
+	var side_wave := sin(breath_time * 0.57 + 1.0)
+	return {
+		"pos": Vector3(BREATH_POS_AMOUNT.x * side_wave, BREATH_POS_AMOUNT.y * wave, BREATH_POS_AMOUNT.z * wave),
+		"rot": Vector3(BREATH_ROT_AMOUNT.x * wave, BREATH_ROT_AMOUNT.y * side_wave, BREATH_ROT_AMOUNT.z * side_wave)
+	}
 
 func handle_direction_changed(dir_index: int, is_attacking: bool, ui_locked: bool) -> void:
 	if is_attacking or ui_locked:
