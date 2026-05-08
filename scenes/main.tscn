@@ -7,5 +7,6 @@
 script = ExtResource("1_o5qli")
 
 [node name="Player" parent="." unique_id=2122427803 instance=ExtResource("2_0wfyh")]
+player_class = 0
 
 [node name="LevelContainer" type="Node3D" parent="." unique_id=1605950127]

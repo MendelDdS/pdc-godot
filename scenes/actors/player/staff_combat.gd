@@ -176,6 +176,8 @@ func build_attack_data(active_critical: bool) -> Dictionary:
 		camera_kick_dir *= 1.6
 
 	return {
+		"weapon_kind": "Staff",
+		"attack_direction": -1,
 		"next_stance": 0,
 		"original_pos": original_pos,
 		"original_quat": original_quat,

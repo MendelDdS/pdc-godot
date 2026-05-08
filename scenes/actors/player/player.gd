@@ -15,6 +15,7 @@ enum PlayerClass { WARRIOR, MAGE }
 @export var max_mana: float = 100.0
 @export var mana_regen_per_second: float = 10.0
 @export var spell_mana_cost: float = 22.0
+@export var resource_regen_delay: float = 0.65
 
 const MOVE_DURATION: float = 0.35
 const ROTATE_DURATION: float = 0.3
@@ -63,10 +64,13 @@ var block_ready_msec: int = -100000
 var defense_pose_ready: bool = false
 var critical_attack_until_msec: int = -100000
 var active_attack_is_critical: bool = false
+var active_attack_context: Dictionary = {}
 var queued_magic_is_critical: bool = false
 var can_attack: bool = true
 var stamina: float = 100.0
 var mana: float = 100.0
+var stamina_regen_delay_timer: float = 0.0
+var mana_regen_delay_timer: float = 0.0
 
 const ATTACK_RECOVERY_DELAY: float = 0.0
 
@@ -124,13 +128,18 @@ func handle_combat_input() -> void:
 		return
 
 	if _is_using_staff():
-		if Input.is_action_just_pressed("Item Action") and can_attack and not is_defending and _has_mana_for_spell():
-			active_weapon_combat.start_draw(combat_ui.current_direction)
+		if Input.is_action_just_pressed("Item Action") and can_attack and not is_defending:
+			if _has_mana_for_spell():
+				active_weapon_combat.start_draw(combat_ui.current_direction)
+			else:
+				_flash_mana_denied()
 		elif Input.is_action_just_released("Item Action") and active_weapon_combat.is_drawing():
 			var cast_result: Dictionary = active_weapon_combat.finish_draw()
 			if cast_result["valid"] and _consume_mana(spell_mana_cost):
 				queued_magic_is_critical = cast_result["critical"]
 				perform_attack()
+			elif cast_result["valid"]:
+				_flash_mana_denied()
 	elif Input.is_action_just_pressed("Item Action") and can_attack and not is_defending:
 		perform_attack()
 
@@ -166,9 +175,9 @@ func _is_using_staff() -> bool:
 func _is_using_sword() -> bool:
 	return current_weapon != null and not _is_using_staff()
 
-func play_block_impact_feedback() -> void:
-	if _is_using_sword():
-		_consume_stamina(block_stamina_cost)
+func play_block_impact_feedback() -> bool:
+	if _is_using_sword() and not _consume_stamina(block_stamina_cost):
+		return false
 
 	var original_pos := weapon_pivot.position
 	var original_quat := weapon_pivot.quaternion
@@ -189,6 +198,7 @@ func play_block_impact_feedback() -> void:
 	tween.parallel().tween_property(weapon_pivot, "quaternion", rattle_quat_b, 0.04)
 	tween.tween_property(weapon_pivot, "position", original_pos, 0.13).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tween.parallel().tween_property(weapon_pivot, "quaternion", original_quat, 0.13).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	return true
 
 func play_perfect_block_impact_feedback() -> void:
 	var original_pos := weapon_pivot.position
@@ -213,9 +223,14 @@ func _update_attack_recovery(delta: float) -> void:
 		attack_recovering = false
 
 func _update_resources(delta: float) -> void:
-	if _is_using_sword() and not is_attacking:
+	if stamina_regen_delay_timer > 0.0:
+		stamina_regen_delay_timer -= delta
+	if mana_regen_delay_timer > 0.0:
+		mana_regen_delay_timer -= delta
+
+	if _is_using_sword() and not is_attacking and stamina_regen_delay_timer <= 0.0:
 		stamina = minf(stamina + stamina_regen_per_second * delta, max_stamina)
-	if _is_using_staff() and not is_attacking:
+	if _is_using_staff() and not is_attacking and mana_regen_delay_timer <= 0.0:
 		mana = minf(mana + mana_regen_per_second * delta, max_mana)
 	_update_resources_ui()
 
@@ -235,19 +250,31 @@ func _has_mana_for_spell() -> bool:
 
 func _consume_stamina(amount: float) -> bool:
 	if stamina < amount:
+		_flash_stamina_denied()
 		return false
 
 	stamina -= amount
+	stamina_regen_delay_timer = resource_regen_delay
 	_update_resources_ui()
 	return true
 
 func _consume_mana(amount: float) -> bool:
 	if mana < amount:
+		_flash_mana_denied()
 		return false
 
 	mana -= amount
+	mana_regen_delay_timer = resource_regen_delay
 	_update_resources_ui()
 	return true
+
+func _flash_stamina_denied() -> void:
+	if resources_ui != null and resources_ui.has_method("flash_stamina_denied"):
+		resources_ui.flash_stamina_denied()
+
+func _flash_mana_denied() -> void:
+	if resources_ui != null and resources_ui.has_method("flash_mana_denied"):
+		resources_ui.flash_mana_denied()
 
 func update_weapon_stance(delta: float) -> void:
 	if active_weapon_combat == null or is_attacking or attack_recovering:
@@ -272,6 +299,8 @@ func perform_attack() -> void:
 	melee_ray.enabled = true
 
 	var attack_data: Dictionary = active_weapon_combat.build_attack_data(active_attack_is_critical)
+	active_attack_context = attack_data.duplicate()
+	active_attack_context["critical"] = active_attack_is_critical
 	weapon_pivot.position = attack_data["original_pos"]
 	weapon_pivot.quaternion = attack_data["original_quat"]
 
@@ -323,6 +352,7 @@ func _on_attack_animation_finished_event(next_stance: int, _final_pos: Vector3, 
 	combat_ui.is_locked = false
 	melee_ray.enabled = false
 	active_attack_is_critical = false
+	active_attack_context.clear()
 	if active_weapon_combat != null:
 		active_weapon_combat.on_attack_finished(next_stance)
 
@@ -339,11 +369,16 @@ func _check_hit() -> void:
 		if health:
 			print("Dealing damage to ", target.name)
 			var hit_owner = health.get_parent()
+			if hit_owner and hit_owner.has_method("try_avoid_player_attack") and hit_owner.try_avoid_player_attack(self, active_attack_context):
+				return
 			if active_attack_is_critical and hit_owner and hit_owner.has_method("on_critical_hit_by_player"):
 				hit_owner.on_critical_hit_by_player(self)
 			elif hit_owner and hit_owner.has_method("on_hit_by_player"):
 				hit_owner.on_hit_by_player(self)
-			health.take_damage(_get_current_attack_damage())
+			var damage := _get_current_attack_damage()
+			if hit_owner and hit_owner.has_method("show_damage_number"):
+				hit_owner.show_damage_number(damage, active_attack_is_critical)
+			health.take_damage(damage)
 
 func _check_magic_hit() -> void:
 	var start := camera.global_position
@@ -364,11 +399,16 @@ func _check_magic_hit() -> void:
 
 	if health:
 		var hit_owner = health.get_parent()
+		if hit_owner and hit_owner.has_method("try_avoid_player_attack") and hit_owner.try_avoid_player_attack(self, active_attack_context):
+			return
 		if active_attack_is_critical and hit_owner and hit_owner.has_method("on_critical_hit_by_player"):
 			hit_owner.on_critical_hit_by_player(self)
 		elif hit_owner and hit_owner.has_method("on_hit_by_player"):
 			hit_owner.on_hit_by_player(self)
-		health.take_damage(_get_current_attack_damage())
+		var damage := _get_current_attack_damage()
+		if hit_owner and hit_owner.has_method("show_damage_number"):
+			hit_owner.show_damage_number(damage, active_attack_is_critical)
+		health.take_damage(damage)
 
 func _get_current_magic_range() -> float:
 	if current_weapon != null and current_weapon.has_method("get_magic_range"):
