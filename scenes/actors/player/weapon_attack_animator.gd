@@ -8,7 +8,6 @@ const WEAPON_ROTATION_TRACK := NodePath("../CameraPivot/Camera3D/WeaponPivot:qua
 const SELF_METHOD_TRACK := NodePath(".")
 const LIBRARY_NAME := StringName("runtime")
 const ANIMATION_NAME := StringName("weapon_attack_runtime")
-const ATTACK_SPEED_SCALE: float = 1.0
 
 var _animation_player: AnimationPlayer
 var _impact_callback: Callable
@@ -34,6 +33,7 @@ func play_attack(
 	final_rot_quat: Quaternion,
 	next_stance: int,
 	impact_dir: Vector3,
+	attack_speed_rate: float,
 	on_impact: Callable,
 	on_finish: Callable
 ) -> void:
@@ -121,7 +121,7 @@ func play_attack(
 
 	animation_library.add_animation(ANIMATION_NAME, anim)
 	_animation_player.play(StringName("runtime/weapon_attack_runtime"))
-	_animation_player.speed_scale = ATTACK_SPEED_SCALE
+	_animation_player.speed_scale = maxf(attack_speed_rate, 0.01)
 
 func _get_slash_group(next_stance: int, final_rot_degrees: Vector3) -> String:
 	match next_stance:

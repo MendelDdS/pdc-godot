@@ -1,6 +1,8 @@
 extends Node
 class_name SwordCombat
 
+@export_range(0.2, 3.0, 0.05) var attack_speed_rate: float = 1.0
+
 const STANCE_TRANSITION_DURATION: float = .15
 const DEFENSE_TRANSITION_SPEED: float = 25.0
 const STANCE_ROTATE_SPEED: float = 15.0
@@ -155,6 +157,7 @@ func build_attack_data(active_critical: bool) -> Dictionary:
 	return {
 		"weapon_kind": "Sword",
 		"attack_direction": attack_from_stance,
+		"attack_speed_rate": attack_speed_rate,
 		"next_stance": next_stance,
 		"original_pos": original_pos,
 		"original_quat": original_quat,

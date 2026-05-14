@@ -11,6 +11,7 @@ enum PlayerClass { WARRIOR, MAGE }
 @export var max_stamina: float = 100.0
 @export var stamina_regen_per_second: float = 18.0
 @export var sword_attack_stamina_cost: float = 18.0
+@export_range(0.2, 3.0, 0.05) var sword_attack_speed_rate: float = 1.0
 @export var block_stamina_cost: float = 14.0
 @export var max_mana: float = 100.0
 @export var mana_regen_per_second: float = 10.0
@@ -301,6 +302,7 @@ func perform_attack() -> void:
 		attack_data["final_quat"],
 		attack_data["next_stance"],
 		attack_data["camera_kick_dir"],
+		float(attack_data.get("attack_speed_rate", 1.0)),
 		Callable(self, "_on_attack_impact_event"),
 		Callable(self, "_on_attack_animation_finished_event")
 	)
@@ -484,7 +486,14 @@ func _refresh_weapon_combat() -> void:
 	active_weapon_combat.name = "%sCombat" % weapon_kind
 	add_child(active_weapon_combat)
 	active_weapon_combat.setup(combat_ui, weapon_pivot, camera)
+	_apply_player_combat_stats()
 	active_weapon_combat.reset()
+
+func _apply_player_combat_stats() -> void:
+	if active_weapon_combat == null:
+		return
+	if _get_current_weapon_kind() == "Sword" and "attack_speed_rate" in active_weapon_combat:
+		active_weapon_combat.attack_speed_rate = sword_attack_speed_rate
 
 func _get_current_weapon_kind() -> String:
 	if current_weapon != null and current_weapon.has_method("get_weapon_kind"):
