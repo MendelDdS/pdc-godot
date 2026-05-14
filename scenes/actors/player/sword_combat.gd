@@ -2,6 +2,10 @@ extends Node
 class_name SwordCombat
 
 @export_range(0.2, 3.0, 0.05) var attack_speed_rate: float = 1.0
+@export var thrust_stamina_cost: float = 14.0
+@export var top_attack_stamina_cost: float = 22.0
+@export var diagonal_attack_stamina_cost: float = 18.0
+@export var combo_critical_window: float = 1.15
 
 const STANCE_TRANSITION_DURATION: float = .15
 const DEFENSE_TRANSITION_SPEED: float = 25.0
@@ -15,6 +19,11 @@ const ATTACK_READY_ROT_DOT: float = 0.99
 const BREATH_FREQ: float = 1.45
 const BREATH_POS_AMOUNT: Vector3 = Vector3(0.018, 0.028, 0.012)
 const BREATH_ROT_AMOUNT: Vector3 = Vector3(0.9, 0.35, 0.7)
+const CRITICAL_COMBOS: Array[Array] = [
+	[2, 4, 1],
+	[5, 3, 1],
+	[0, 0, 0]
+]
 const STANCES = {
 	0: {"pos": Vector3(0.5, -0.3, -1), "rot": Vector3(0, -90, 90)},
 	1: {"pos": Vector3(0, 0.7, -1), "rot": Vector3(0, -90, 0)},
@@ -39,6 +48,8 @@ var stance_actual_start_quat: Quaternion = Quaternion.IDENTITY
 var stance_transition_elapsed: float = 0.0
 var breath_time: float = 0.0
 var queued_stance_index: int = -1
+var combo_sequence: Array[int] = []
+var last_combo_attack_msec: int = -100000
 
 func setup(ui: CombatUI, pivot: Node3D, player_camera: Camera3D) -> void:
 	combat_ui = ui
@@ -53,6 +64,8 @@ func reset() -> void:
 	stance_transition_elapsed = 0.0
 	breath_time = randf() * TAU
 	queued_stance_index = -1
+	combo_sequence.clear()
+	last_combo_attack_msec = -100000
 
 func update_weapon_stance(delta: float, is_defending: bool, defense_stance: Dictionary, is_idle: bool = false) -> Dictionary:
 	var base_target_pos: Vector3 = target_stance_pos
@@ -157,6 +170,7 @@ func build_attack_data(active_critical: bool) -> Dictionary:
 	return {
 		"weapon_kind": "Sword",
 		"attack_direction": attack_from_stance,
+		"stamina_cost": get_current_attack_stamina_cost(),
 		"attack_speed_rate": attack_speed_rate,
 		"next_stance": next_stance,
 		"original_pos": original_pos,
@@ -193,6 +207,51 @@ func is_ready_for_attack() -> bool:
 	var position_ready := weapon_pivot.position.distance_to(target_stance_pos) <= ATTACK_READY_DISTANCE
 	var rotation_ready := absf(weapon_pivot.quaternion.dot(target_quat)) >= ATTACK_READY_ROT_DOT
 	return position_ready and rotation_ready
+
+func get_current_attack_stamina_cost() -> float:
+	match current_stance_index:
+		0:
+			return thrust_stamina_cost
+		1:
+			return top_attack_stamina_cost
+		_:
+			return diagonal_attack_stamina_cost
+
+func consume_combo_critical_for_current_attack() -> bool:
+	var now := Time.get_ticks_msec()
+	if float(now - last_combo_attack_msec) / 1000.0 > combo_critical_window:
+		combo_sequence.clear()
+
+	combo_sequence.append(current_stance_index)
+	last_combo_attack_msec = now
+
+	var max_combo_size := _get_max_combo_size()
+	while combo_sequence.size() > max_combo_size:
+		combo_sequence.pop_front()
+
+	return _matches_critical_combo()
+
+func _matches_critical_combo() -> bool:
+	for combo in CRITICAL_COMBOS:
+		if combo_sequence.size() < combo.size():
+			continue
+		var offset := combo_sequence.size() - combo.size()
+		var matches := true
+		for i in combo.size():
+			if combo_sequence[offset + i] != combo[i]:
+				matches = false
+				break
+		if matches:
+			combo_sequence.clear()
+			return true
+
+	return false
+
+func _get_max_combo_size() -> int:
+	var max_size := 0
+	for combo in CRITICAL_COMBOS:
+		max_size = maxi(max_size, combo.size())
+	return max_size
 
 func _build_attack_pose(from_stance: int, original_pos: Vector3, original_quat: Quaternion) -> Dictionary:
 	match from_stance:

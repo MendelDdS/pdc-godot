@@ -376,14 +376,26 @@ func _play_block_feedback() -> void:
 	body_material.albedo_color = Color(0.65, 0.75, 0.85, 1.0)
 	if body_rotation_tween:
 		body_rotation_tween.kill()
+	if body_position_tween:
+		body_position_tween.kill()
 	body.rotation_degrees = base_body_rotation_degrees
+	body.position = base_body_position
 
 	body_rotation_tween = create_tween()
 	body_rotation_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	body_rotation_tween.tween_property(body, "rotation_degrees", base_body_rotation_degrees + Vector3(-4.0, 0.0, 9.0), 0.05)
+	body_rotation_tween.tween_property(body, "rotation_degrees", base_body_rotation_degrees + Vector3(-7.0, 0.0, 16.0), 0.045)
+	body_rotation_tween.parallel().tween_property(body_material, "albedo_color", Color(0.95, 1.0, 1.0, 1.0), 0.045)
+	body_rotation_tween.tween_property(body, "rotation_degrees", base_body_rotation_degrees + Vector3(3.0, 0.0, -8.0), 0.055)
 	body_rotation_tween.parallel().tween_property(body_material, "albedo_color", base_body_color, 0.18)
-	body_rotation_tween.tween_property(body, "rotation_degrees", base_body_rotation_degrees, 0.10)
+	body_rotation_tween.tween_property(body, "rotation_degrees", base_body_rotation_degrees, 0.09)
 	body_rotation_tween.tween_callback(_finish_body_rotation_feedback)
+
+	body_position_tween = create_tween()
+	body_position_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	body_position_tween.tween_property(body, "position", base_body_position + Vector3(0.0, 0.04, 0.26), 0.045)
+	body_position_tween.tween_property(body, "position", base_body_position + Vector3(0.0, 0.0, -0.08), 0.055)
+	body_position_tween.tween_property(body, "position", base_body_position, 0.09).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	body_position_tween.tween_callback(_finish_body_position_feedback)
 
 func _show_block_text() -> void:
 	var color := Color(0.78, 0.88, 1.0, 1.0)

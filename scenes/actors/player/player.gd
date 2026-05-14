@@ -5,18 +5,42 @@ class_name Player
 
 enum PlayerClass { WARRIOR, MAGE }
 
+const BASE_STAT_VALUE: int = 10
+
+@export_group("Setup")
 @export var player_class: PlayerClass = PlayerClass.MAGE
 @export var warrior_starting_weapon_scene: PackedScene
 @export var mage_starting_weapon_scene: PackedScene
-@export var max_stamina: float = 100.0
-@export var stamina_regen_per_second: float = 18.0
-@export var sword_attack_stamina_cost: float = 18.0
-@export_range(0.2, 3.0, 0.05) var sword_attack_speed_rate: float = 1.0
-@export var block_stamina_cost: float = 14.0
-@export var max_mana: float = 100.0
-@export var mana_regen_per_second: float = 10.0
-@export var spell_mana_cost: float = 22.0
+
+@export_group("Progression")
+@export var level: int = 1
+
+@export_group("Primary Stats")
+@export var strength: int = BASE_STAT_VALUE
+@export var dexterity: int = BASE_STAT_VALUE
+@export var vigor: int = BASE_STAT_VALUE
+@export var intelligence: int = BASE_STAT_VALUE
+
+@export_group("Resource Stats")
+@export var base_max_stamina: float = 100.0
+@export var stamina_per_vigor: float = 4.0
+@export var base_stamina_regen_per_second: float = 10.0
+@export var stamina_regen_per_vigor: float = 0.25
+@export var base_max_mana: float = 100.0
+@export var mana_per_intelligence: float = 4.0
+@export var base_mana_regen_per_second: float = 10.0
+@export var mana_regen_per_intelligence: float = 0.25
 @export var resource_regen_delay: float = 0.65
+
+@export_group("Combat Stats")
+@export var sword_attack_stamina_cost: float = 18.0
+@export var block_stamina_cost: float = 14.0
+@export var spell_mana_cost: float = 22.0
+@export_range(0.2, 3.0, 0.05) var base_sword_attack_speed_rate: float = 1.0
+@export var attack_speed_per_dexterity: float = 0.02
+@export var base_damage_bonus: int = 0
+@export var physical_damage_bonus_per_strength: float = 0.5
+@export var magic_damage_bonus_per_intelligence: float = 0.5
 
 const MOVE_DURATION: float = 0.35
 const ROTATE_DURATION: float = 0.3
@@ -70,6 +94,13 @@ var queued_magic_is_critical: bool = false
 var can_attack: bool = true
 var stamina: float = 100.0
 var mana: float = 100.0
+var max_stamina: float = 100.0
+var stamina_regen_per_second: float = 18.0
+var max_mana: float = 100.0
+var mana_regen_per_second: float = 10.0
+var sword_attack_speed_rate: float = 1.0
+var physical_damage_bonus: int = 0
+var magic_damage_bonus: int = 0
 var stamina_regen_delay_timer: float = 0.0
 var mana_regen_delay_timer: float = 0.0
 
@@ -83,6 +114,7 @@ func _ready() -> void:
 	health_component.damage_taken.connect(_on_take_damage)
 
 	combat_ui.direction_changed.connect(_on_combat_direction_changed)
+	_recalculate_stats()
 	stamina = max_stamina
 	mana = max_mana
 	resources_ui.setup_for_class(player_class == PlayerClass.MAGE)
@@ -256,6 +288,46 @@ func _consume_mana(amount: float) -> bool:
 	_update_resources_ui()
 	return true
 
+func apply_level_up(
+	strength_gain: int = 0,
+	dexterity_gain: int = 0,
+	vigor_gain: int = 0,
+	intelligence_gain: int = 0
+) -> void:
+	level += 1
+	strength += max(0, strength_gain)
+	dexterity += max(0, dexterity_gain)
+	vigor += max(0, vigor_gain)
+	intelligence += max(0, intelligence_gain)
+	_recalculate_stats(true)
+	print("Level up! Level: ", level, " STR: ", strength, " DEX: ", dexterity, " VIG: ", vigor, " INT: ", intelligence)
+
+func _recalculate_stats(fill_resources: bool = false) -> void:
+	var stamina_percent := 1.0 if max_stamina <= 0.0 else stamina / max_stamina
+	var mana_percent := 1.0 if max_mana <= 0.0 else mana / max_mana
+	var vigor_bonus := vigor - BASE_STAT_VALUE
+	var intelligence_bonus := intelligence - BASE_STAT_VALUE
+	var dexterity_bonus := dexterity - BASE_STAT_VALUE
+	var strength_bonus := strength - BASE_STAT_VALUE
+
+	max_stamina = maxf(1.0, base_max_stamina + vigor_bonus * stamina_per_vigor)
+	stamina_regen_per_second = maxf(0.0, base_stamina_regen_per_second + vigor_bonus * stamina_regen_per_vigor)
+	max_mana = maxf(1.0, base_max_mana + intelligence_bonus * mana_per_intelligence)
+	mana_regen_per_second = maxf(0.0, base_mana_regen_per_second + intelligence_bonus * mana_regen_per_intelligence)
+	sword_attack_speed_rate = clampf(base_sword_attack_speed_rate + dexterity_bonus * attack_speed_per_dexterity, 0.2, 3.0)
+	physical_damage_bonus = base_damage_bonus + roundi(strength_bonus * physical_damage_bonus_per_strength)
+	magic_damage_bonus = base_damage_bonus + roundi(intelligence_bonus * magic_damage_bonus_per_intelligence)
+
+	if fill_resources:
+		stamina = max_stamina
+		mana = max_mana
+	else:
+		stamina = clampf(stamina_percent * max_stamina, 0.0, max_stamina)
+		mana = clampf(mana_percent * max_mana, 0.0, max_mana)
+
+	_apply_player_combat_stats()
+	_update_resources_ui()
+
 func _flash_stamina_denied() -> void:
 	if resources_ui != null and resources_ui.has_method("flash_stamina_denied"):
 		resources_ui.flash_stamina_denied()
@@ -276,12 +348,12 @@ func update_weapon_stance(delta: float) -> void:
 func perform_attack() -> void:
 	if not _can_start_attack_input() or active_weapon_combat == null:
 		return
-	if _is_using_sword() and not _consume_stamina(sword_attack_stamina_cost):
+	if _is_using_sword() and not _consume_stamina(_get_current_sword_attack_stamina_cost()):
 		return
 		
 	is_attacking = true
 	can_attack = false
-	active_attack_is_critical = _consume_critical_attack_window() or (queued_magic_is_critical if _is_using_staff() else false)
+	active_attack_is_critical = _consume_critical_attack_window() or _consume_weapon_combo_critical() or (queued_magic_is_critical if _is_using_staff() else false)
 	queued_magic_is_critical = false
 	melee_ray.enabled = true
 
@@ -355,6 +427,18 @@ func _update_attack_availability() -> void:
 	if active_weapon_combat.has_method("is_ready_for_attack"):
 		can_attack = active_weapon_combat.is_ready_for_attack()
 
+func _get_current_sword_attack_stamina_cost() -> float:
+	if active_weapon_combat != null and active_weapon_combat.has_method("get_current_attack_stamina_cost"):
+		return active_weapon_combat.get_current_attack_stamina_cost()
+
+	return sword_attack_stamina_cost
+
+func _consume_weapon_combo_critical() -> bool:
+	if active_weapon_combat != null and active_weapon_combat.has_method("consume_combo_critical_for_current_attack"):
+		return active_weapon_combat.consume_combo_critical_for_current_attack()
+
+	return false
+
 func _check_hit() -> void:
 	melee_ray.force_raycast_update()
 	if melee_ray.is_colliding():
@@ -416,16 +500,24 @@ func _get_current_magic_range() -> float:
 	return 18.0
 
 func _get_current_attack_damage() -> int:
+	var damage: int
 	if current_weapon == null:
-		return DEFAULT_CRITICAL_ATTACK_DAMAGE if active_attack_is_critical else DEFAULT_ATTACK_DAMAGE
+		damage = DEFAULT_CRITICAL_ATTACK_DAMAGE if active_attack_is_critical else DEFAULT_ATTACK_DAMAGE
+		return max(0, damage + _get_current_damage_bonus())
 
 	if active_attack_is_critical and current_weapon.has_method("roll_critical_attack_damage"):
-		return current_weapon.roll_critical_attack_damage()
+		damage = current_weapon.roll_critical_attack_damage()
+		return max(0, damage + _get_current_damage_bonus())
 
 	if current_weapon.has_method("roll_attack_damage"):
-		return current_weapon.roll_attack_damage()
+		damage = current_weapon.roll_attack_damage()
+		return max(0, damage + _get_current_damage_bonus())
 
-	return DEFAULT_CRITICAL_ATTACK_DAMAGE if active_attack_is_critical else DEFAULT_ATTACK_DAMAGE
+	damage = DEFAULT_CRITICAL_ATTACK_DAMAGE if active_attack_is_critical else DEFAULT_ATTACK_DAMAGE
+	return max(0, damage + _get_current_damage_bonus())
+
+func _get_current_damage_bonus() -> int:
+	return magic_damage_bonus if _is_using_staff() else physical_damage_bonus
 
 func equip_weapon(weapon_scene: PackedScene, drop_current: bool, drop_position: Vector3) -> void:
 	var next_weapon := weapon_scene.instantiate()
