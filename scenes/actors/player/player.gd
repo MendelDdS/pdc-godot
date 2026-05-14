@@ -72,11 +72,6 @@ var mana: float = 100.0
 var stamina_regen_delay_timer: float = 0.0
 var mana_regen_delay_timer: float = 0.0
 
-const ATTACK_RECOVERY_DELAY: float = 0.0
-
-var attack_recovering: bool = false
-var attack_recovery_timer: float = 0.0
-
 func _ready() -> void:
 	print("Character created: " + player_name)
 	base_camera_y = camera.position.y
@@ -104,8 +99,8 @@ func _process(delta: float) -> void:
 	handle_movement_input()
 	handle_combat_input()
 	_update_resources(delta)
-	_update_attack_recovery(delta)
 	update_weapon_stance(delta)
+	_update_attack_availability()
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
@@ -128,7 +123,7 @@ func handle_combat_input() -> void:
 		return
 
 	if _is_using_staff():
-		if Input.is_action_just_pressed("Item Action") and can_attack and not is_defending:
+		if Input.is_action_just_pressed("Item Action") and _can_start_attack_input() and not is_defending:
 			if _has_mana_for_spell():
 				active_weapon_combat.start_draw(combat_ui.current_direction)
 			else:
@@ -140,7 +135,7 @@ func handle_combat_input() -> void:
 				perform_attack()
 			elif cast_result["valid"]:
 				_flash_mana_denied()
-	elif Input.is_action_just_pressed("Item Action") and can_attack and not is_defending:
+	elif Input.is_action_just_pressed("Item Action") and _can_start_attack_input() and not is_defending:
 		perform_attack()
 
 func is_blocking() -> bool:
@@ -214,14 +209,6 @@ func play_perfect_block_impact_feedback() -> void:
 	tween.tween_property(weapon_pivot, "position", original_pos, 0.06)
 	tween.parallel().tween_property(weapon_pivot, "quaternion", original_quat, 0.06)
 
-func _update_attack_recovery(delta: float) -> void:
-	if not attack_recovering:
-		return
-
-	attack_recovery_timer -= delta
-	if attack_recovery_timer <= 0.0:
-		attack_recovering = false
-
 func _update_resources(delta: float) -> void:
 	if stamina_regen_delay_timer > 0.0:
 		stamina_regen_delay_timer -= delta
@@ -277,7 +264,7 @@ func _flash_mana_denied() -> void:
 		resources_ui.flash_mana_denied()
 
 func update_weapon_stance(delta: float) -> void:
-	if active_weapon_combat == null or is_attacking or attack_recovering:
+	if active_weapon_combat == null or is_attacking:
 		return
 
 	var result: Dictionary = active_weapon_combat.update_weapon_stance(delta, is_defending, DEFENSE_STANCE, not is_moving and not is_rotating)
@@ -286,7 +273,7 @@ func update_weapon_stance(delta: float) -> void:
 		block_ready_msec = Time.get_ticks_msec()
 
 func perform_attack() -> void:
-	if is_attacking or not can_attack or active_weapon_combat == null:
+	if not _can_start_attack_input() or active_weapon_combat == null:
 		return
 	if _is_using_sword() and not _consume_stamina(sword_attack_stamina_cost):
 		return
@@ -295,7 +282,6 @@ func perform_attack() -> void:
 	can_attack = false
 	active_attack_is_critical = _consume_critical_attack_window() or (queued_magic_is_critical if _is_using_staff() else false)
 	queued_magic_is_critical = false
-	combat_ui.is_locked = true
 	melee_ray.enabled = true
 
 	var attack_data: Dictionary = active_weapon_combat.build_attack_data(active_attack_is_critical)
@@ -346,15 +332,26 @@ func _on_attack_impact_event(camera_kick_dir: Vector3) -> void:
 
 func _on_attack_animation_finished_event(next_stance: int, _final_pos: Vector3, _final_rot: Vector3) -> void:
 	is_attacking = false
-	attack_recovering = false
-	attack_recovery_timer = 0.0
-	can_attack = true
-	combat_ui.is_locked = false
 	melee_ray.enabled = false
 	active_attack_is_critical = false
 	active_attack_context.clear()
 	if active_weapon_combat != null:
 		active_weapon_combat.on_attack_finished(next_stance)
+	can_attack = not _is_using_sword()
+
+func _can_start_attack_input() -> bool:
+	if is_attacking:
+		return false
+	if _is_using_sword():
+		return active_weapon_combat != null and active_weapon_combat.has_method("is_ready_for_attack") and active_weapon_combat.is_ready_for_attack()
+
+	return can_attack
+
+func _update_attack_availability() -> void:
+	if not _is_using_sword() or is_attacking or active_weapon_combat == null:
+		return
+	if active_weapon_combat.has_method("is_ready_for_attack"):
+		can_attack = active_weapon_combat.is_ready_for_attack()
 
 func _check_hit() -> void:
 	melee_ray.force_raycast_update()
@@ -499,7 +496,7 @@ func _on_combat_direction_changed(dir_index: int) -> void:
 	if active_weapon_combat == null:
 		return
 
-	active_weapon_combat.handle_direction_changed(dir_index, is_attacking, combat_ui.is_locked)
+	active_weapon_combat.handle_direction_changed(dir_index, is_attacking, false)
 
 func handle_movement_input() -> void:
 	if is_moving or is_rotating or is_attacking:

@@ -1,13 +1,15 @@
 extends Node
 class_name SwordCombat
 
-const STANCE_TRANSITION_DURATION: float = 0.22
-const DEFENSE_TRANSITION_SPEED: float = 28.0
-const STANCE_ROTATE_SPEED: float = 12.0
-const BOTTOM_CROSS_TRANSITION_DURATION: float = 0.45
+const STANCE_TRANSITION_DURATION: float = .15
+const DEFENSE_TRANSITION_SPEED: float = 25.0
+const STANCE_ROTATE_SPEED: float = 15.0
+const BOTTOM_CROSS_TRANSITION_DURATION: float = 0.35
 const BOTTOM_CROSS_ARC_HEIGHT: float = 0.85
 const DEFENSE_READY_DISTANCE: float = 0.04
 const DEFENSE_READY_ROT_DOT: float = 0.995
+const ATTACK_READY_DISTANCE: float = 0.09
+const ATTACK_READY_ROT_DOT: float = 0.99
 const BREATH_FREQ: float = 1.45
 const BREATH_POS_AMOUNT: Vector3 = Vector3(0.018, 0.028, 0.012)
 const BREATH_ROT_AMOUNT: Vector3 = Vector3(0.9, 0.35, 0.7)
@@ -34,6 +36,7 @@ var stance_actual_start_pos: Vector3 = Vector3.ZERO
 var stance_actual_start_quat: Quaternion = Quaternion.IDENTITY
 var stance_transition_elapsed: float = 0.0
 var breath_time: float = 0.0
+var queued_stance_index: int = -1
 
 func setup(ui: CombatUI, pivot: Node3D, player_camera: Camera3D) -> void:
 	combat_ui = ui
@@ -47,6 +50,7 @@ func reset() -> void:
 	stance_transitioning = false
 	stance_transition_elapsed = 0.0
 	breath_time = randf() * TAU
+	queued_stance_index = -1
 
 func update_weapon_stance(delta: float, is_defending: bool, defense_stance: Dictionary, is_idle: bool = false) -> Dictionary:
 	var base_target_pos: Vector3 = target_stance_pos
@@ -108,9 +112,16 @@ func _get_breath_offset(delta: float) -> Dictionary:
 	}
 
 func handle_direction_changed(dir_index: int, is_attacking: bool, ui_locked: bool) -> void:
-	if is_attacking or ui_locked:
+	if ui_locked:
 		return
 
+	if is_attacking:
+		queued_stance_index = dir_index
+		return
+
+	_start_stance_transition(dir_index)
+
+func _start_stance_transition(dir_index: int) -> void:
 	stance_from_index = current_stance_index
 	stance_to_index = dir_index
 	stance_actual_start_pos = weapon_pivot.position
@@ -124,8 +135,6 @@ func handle_direction_changed(dir_index: int, is_attacking: bool, ui_locked: boo
 func build_attack_data(active_critical: bool) -> Dictionary:
 	var attack_from_stance := current_stance_index
 	var next_stance := _get_next_stance_after_attack(attack_from_stance)
-	if combat_ui != null:
-		combat_ui.set_direction(next_stance)
 
 	var original_pos: Vector3 = STANCES[attack_from_stance]["pos"]
 	var original_quat := _degrees_to_quat(STANCES[attack_from_stance]["rot"])
@@ -163,6 +172,24 @@ func on_attack_finished(next_stance: int) -> void:
 	target_stance_pos = STANCES[next_stance]["pos"]
 	target_stance_rot = STANCES[next_stance]["rot"]
 	stance_transitioning = false
+	if queued_stance_index >= 0:
+		var next_queued := queued_stance_index
+		queued_stance_index = -1
+		if next_queued != next_stance:
+			_start_stance_transition(next_queued)
+	elif combat_ui != null:
+		combat_ui.set_direction(next_stance)
+
+func is_ready_for_attack() -> bool:
+	if weapon_pivot == null or stance_transitioning or queued_stance_index >= 0:
+		return false
+	if combat_ui != null and current_stance_index != combat_ui.current_direction:
+		return false
+
+	var target_quat := _degrees_to_quat(target_stance_rot)
+	var position_ready := weapon_pivot.position.distance_to(target_stance_pos) <= ATTACK_READY_DISTANCE
+	var rotation_ready := absf(weapon_pivot.quaternion.dot(target_quat)) >= ATTACK_READY_ROT_DOT
+	return position_ready and rotation_ready
 
 func _build_attack_pose(from_stance: int, original_pos: Vector3, original_quat: Quaternion) -> Dictionary:
 	match from_stance:

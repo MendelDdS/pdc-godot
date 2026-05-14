@@ -19,7 +19,6 @@ var virtual_mouse_pos: Vector2 = Vector2.ZERO
 var center_threshold: float = 30.0
 var max_distance: float = 100.0
 var mouse_sensitivity: float = 1 # Ajuste este valor para diminuir a sensibilidade
-var is_locked: bool = false
 var magic_trace: Array[int] = []
 
 func _ready() -> void:
@@ -54,9 +53,6 @@ func _get_point_center(dir: int) -> Vector2:
 	return point.position + point.size * 0.5
 
 func handle_mouse_movement(relative_mouse: Vector2) -> void:
-	if is_locked:
-		return
-	
 	virtual_mouse_pos += relative_mouse * mouse_sensitivity
 	
 	# Limit mouse distance
