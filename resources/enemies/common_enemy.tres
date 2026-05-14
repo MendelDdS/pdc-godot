@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="EnemyData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://resources/scripts/enemy_data.gd" id="1_enemy"]
+
+[resource]
+script = ExtResource("1_enemy")
+enemy_name = "Common Enemy"
+max_health = 100
+attack_damage = 5
+attack_windup = 0.35
+attack_cooldown = 1.0
+stun_duration = 1.4
+vision_range_tiles = 4
+move_duration = 0.7
+predicted_sword_block_chance = 0.75
+unpredicted_sword_block_chance = 0.2
+magic_dodge_chance = 0.45
+critical_magic_dodge_chance = 0.2

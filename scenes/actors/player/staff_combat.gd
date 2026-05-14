@@ -11,16 +11,11 @@ const DEFENSE_READY_ROT_DOT: float = 0.995
 const BREATH_FREQ: float = 1.3
 const BREATH_POS_AMOUNT: Vector3 = Vector3(0.014, 0.024, 0.01)
 const BREATH_ROT_AMOUNT: Vector3 = Vector3(0.65, 0.25, 0.55)
-const MAGIC_CRITICAL_MAX_TIME: float = 0.3
-const MAGIC_SPELL_PATTERNS: Array[Array] = [
-	[5, 1, 2],
-	[1, 2, 3],
-	[4, 0, 3]
-]
 
 var combat_ui: CombatUI
 var weapon_pivot: Node3D
 var camera: Camera3D
+var spells: Array[SpellData] = []
 
 var drawing: bool = false
 var draw_invalid: bool = false
@@ -34,6 +29,9 @@ func setup(ui: CombatUI, pivot: Node3D, player_camera: Camera3D) -> void:
 	combat_ui = ui
 	weapon_pivot = pivot
 	camera = player_camera
+
+func set_spells(value: Array[SpellData]) -> void:
+	spells = value.duplicate()
 
 func is_drawing() -> bool:
 	return drawing
@@ -55,18 +53,25 @@ func finish_draw() -> Dictionary:
 		return {"valid": false, "critical": false}
 
 	var released_msec := Time.get_ticks_msec()
-	var matched_pattern_start := _get_matched_pattern_start()
-	var valid_cast := matched_pattern_start >= 0 and not draw_invalid
+	var spell_match := _get_matched_spell_info()
+	var spell: SpellData = spell_match["spell"]
+	var matched_pattern_start: int = spell_match["start"]
+	var valid_cast := spell != null and not draw_invalid
 	var cast_duration := _sequence_duration_from(matched_pattern_start, released_msec) if valid_cast else 999.0
-	var critical := valid_cast and cast_duration <= MAGIC_CRITICAL_MAX_TIME
-	print("Magic sequence drawn: ", sequence, " duration: ", cast_duration, " max: ", MAGIC_CRITICAL_MAX_TIME, " critical: ", critical)
+	var critical := valid_cast and cast_duration <= spell.critical_max_time
+	print("Magic sequence drawn: ", sequence, " spell: ", spell.spell_name if spell != null else "none", " duration: ", cast_duration, " critical: ", critical)
 
 	_clear_draw()
 	if not valid_cast:
 		_return_staff_to_idle()
 		_play_fizzle_feedback()
 
-	return {"valid": valid_cast, "critical": critical}
+	return {
+		"valid": valid_cast,
+		"critical": critical,
+		"spell": spell,
+		"mana_cost": spell.mana_cost if spell != null else 0.0
+	}
 
 func record_direction(dir_index: int) -> void:
 	if not drawing:
@@ -303,8 +308,9 @@ func _direction_offset(dir_index: int) -> Vector2:
 		_:
 			return Vector2.ZERO
 
-func _get_matched_pattern_start() -> int:
-	for pattern in MAGIC_SPELL_PATTERNS:
+func _get_matched_spell_info() -> Dictionary:
+	for spell in spells:
+		var pattern := spell.pattern
 		if sequence.size() < pattern.size():
 			continue
 		var offset := sequence.size() - pattern.size()
@@ -314,8 +320,8 @@ func _get_matched_pattern_start() -> int:
 				matches = false
 				break
 		if matches:
-			return offset
-	return -1
+			return {"spell": spell, "start": offset}
+	return {"spell": null, "start": -1}
 
 func _sequence_duration_from(start_index: int, released_msec: int) -> float:
 	if start_index < 0 or sequence_times.size() < start_index + 1:

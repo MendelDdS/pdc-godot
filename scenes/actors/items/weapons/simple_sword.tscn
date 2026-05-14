@@ -2,9 +2,11 @@
 
 [ext_resource type="PackedScene" uid="uid://cf14h0qiv07kv" path="res://assets/weapons/sword_1handed.gltf" id="1_7i6l3"]
 [ext_resource type="Script" uid="uid://csb17m6npbl6g" path="res://scenes/actors/items/weapons/sword_params.gd" id="2_6n2of"]
+[ext_resource type="Resource" path="res://resources/weapons/simple_sword.tres" id="3_weapon_data"]
 
 [node name="SimpleSword" type="Node3D" unique_id=1100445161]
 script = ExtResource("2_6n2of")
+weapon_data = ExtResource("3_weapon_data")
 weapon_name = "Simple Sword"
 weapon_kind = "Sword"
 attack_damage_range = Vector2i(2, 5)

@@ -6,11 +6,18 @@ class_name Player
 enum PlayerClass { WARRIOR, MAGE }
 
 const BASE_STAT_VALUE: int = 10
+const DEFAULT_MAGE_SPELLS: Array[SpellData] = [
+	preload("res://resources/spells/spark.tres"),
+	preload("res://resources/spells/arcane_bolt.tres"),
+	preload("res://resources/spells/stone_hook.tres")
+]
 
 @export_group("Setup")
+@export var class_data: ClassData
 @export var player_class: PlayerClass = PlayerClass.MAGE
 @export var warrior_starting_weapon_scene: PackedScene
 @export var mage_starting_weapon_scene: PackedScene
+@export var mage_spells: Array[SpellData] = []
 
 @export_group("Progression")
 @export var level: int = 1
@@ -91,6 +98,8 @@ var critical_attack_until_msec: int = -100000
 var active_attack_is_critical: bool = false
 var active_attack_context: Dictionary = {}
 var queued_magic_is_critical: bool = false
+var queued_magic_spell: SpellData = null
+var active_magic_spell: SpellData = null
 var can_attack: bool = true
 var stamina: float = 100.0
 var mana: float = 100.0
@@ -114,6 +123,7 @@ func _ready() -> void:
 	health_component.damage_taken.connect(_on_take_damage)
 
 	combat_ui.direction_changed.connect(_on_combat_direction_changed)
+	_apply_class_data()
 	_recalculate_stats()
 	stamina = max_stamina
 	mana = max_mana
@@ -157,14 +167,12 @@ func handle_combat_input() -> void:
 
 	if _is_using_staff():
 		if Input.is_action_just_pressed("Item Action") and _can_start_attack_input() and not is_defending:
-			if _has_mana_for_spell():
-				active_weapon_combat.start_draw(combat_ui.current_direction)
-			else:
-				_flash_mana_denied()
+			active_weapon_combat.start_draw(combat_ui.current_direction)
 		elif Input.is_action_just_released("Item Action") and active_weapon_combat.is_drawing():
 			var cast_result: Dictionary = active_weapon_combat.finish_draw()
-			if cast_result["valid"] and _consume_mana(spell_mana_cost):
+			if cast_result["valid"] and _consume_mana(float(cast_result["mana_cost"])):
 				queued_magic_is_critical = cast_result["critical"]
+				queued_magic_spell = cast_result["spell"]
 				perform_attack()
 			elif cast_result["valid"]:
 				_flash_mana_denied()
@@ -288,6 +296,21 @@ func _consume_mana(amount: float) -> bool:
 	_update_resources_ui()
 	return true
 
+func _apply_class_data() -> void:
+	if class_data == null:
+		return
+
+	player_class = PlayerClass.MAGE if class_data.class_kind == "Mage" else PlayerClass.WARRIOR
+	strength = class_data.strength
+	dexterity = class_data.dexterity
+	vigor = class_data.vigor
+	intelligence = class_data.intelligence
+	if class_data.starting_weapon_scene != null:
+		if player_class == PlayerClass.MAGE:
+			mage_starting_weapon_scene = class_data.starting_weapon_scene
+		else:
+			warrior_starting_weapon_scene = class_data.starting_weapon_scene
+
 func apply_level_up(
 	strength_gain: int = 0,
 	dexterity_gain: int = 0,
@@ -354,7 +377,9 @@ func perform_attack() -> void:
 	is_attacking = true
 	can_attack = false
 	active_attack_is_critical = _consume_critical_attack_window() or _consume_weapon_combo_critical() or (queued_magic_is_critical if _is_using_staff() else false)
+	active_magic_spell = queued_magic_spell if _is_using_staff() else null
 	queued_magic_is_critical = false
+	queued_magic_spell = null
 	melee_ray.enabled = true
 
 	var attack_data: Dictionary = active_weapon_combat.build_attack_data(active_attack_is_critical)
@@ -408,6 +433,7 @@ func _on_attack_animation_finished_event(next_stance: int, _final_pos: Vector3, 
 	is_attacking = false
 	melee_ray.enabled = false
 	active_attack_is_critical = false
+	active_magic_spell = null
 	active_attack_context.clear()
 	if active_weapon_combat != null:
 		active_weapon_combat.on_attack_finished(next_stance)
@@ -494,6 +520,9 @@ func _check_magic_hit() -> void:
 		health.take_damage(damage)
 
 func _get_current_magic_range() -> float:
+	if active_magic_spell != null:
+		return active_magic_spell.spell_range
+
 	if current_weapon != null and current_weapon.has_method("get_magic_range"):
 		return current_weapon.get_magic_range()
 
@@ -501,6 +530,10 @@ func _get_current_magic_range() -> float:
 
 func _get_current_attack_damage() -> int:
 	var damage: int
+	if _is_using_staff() and active_magic_spell != null:
+		damage = active_magic_spell.roll_damage(active_attack_is_critical)
+		return max(0, damage + _get_current_damage_bonus())
+
 	if current_weapon == null:
 		damage = DEFAULT_CRITICAL_ATTACK_DAMAGE if active_attack_is_critical else DEFAULT_ATTACK_DAMAGE
 		return max(0, damage + _get_current_damage_bonus())
@@ -586,6 +619,8 @@ func _apply_player_combat_stats() -> void:
 		return
 	if _get_current_weapon_kind() == "Sword" and "attack_speed_rate" in active_weapon_combat:
 		active_weapon_combat.attack_speed_rate = sword_attack_speed_rate
+	if _get_current_weapon_kind() == "Staff" and active_weapon_combat.has_method("set_spells"):
+		active_weapon_combat.set_spells(mage_spells if not mage_spells.is_empty() else DEFAULT_MAGE_SPELLS)
 
 func _get_current_weapon_kind() -> String:
 	if current_weapon != null and current_weapon.has_method("get_weapon_kind"):

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="SpellData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://resources/scripts/spell_data.gd" id="1_spell"]
+
+[resource]
+script = ExtResource("1_spell")
+spell_name = "Spark"
+pattern = Array[int]([5, 1, 2])
+mana_cost = 18.0
+damage_range = Vector2i(3, 6)
+critical_damage_range = Vector2i(8, 12)
+spell_range = 18.0
+critical_max_time = 0.3

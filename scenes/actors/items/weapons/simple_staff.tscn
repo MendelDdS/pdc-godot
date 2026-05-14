@@ -2,9 +2,11 @@
 
 [ext_resource type="PackedScene" uid="uid://366uxy1d68o3" path="res://assets/weapons/simple_staff.gltf" id="1_rlbs4"]
 [ext_resource type="Script" uid="uid://csb17m6npbl6g" path="res://scenes/actors/items/weapons/sword_params.gd" id="2_staff_params"]
+[ext_resource type="Resource" path="res://resources/weapons/simple_staff.tres" id="3_weapon_data"]
 
 [node name="SimpleStaff" unique_id=1746945806 instance=ExtResource("1_rlbs4")]
 script = ExtResource("2_staff_params")
+weapon_data = ExtResource("3_weapon_data")
 weapon_name = "Simple Staff"
 weapon_kind = "Staff"
 attack_damage_range = Vector2i(2, 5)

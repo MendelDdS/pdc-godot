@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="SpellData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://resources/scripts/spell_data.gd" id="1_spell"]
+
+[resource]
+script = ExtResource("1_spell")
+spell_name = "Arcane Bolt"
+pattern = Array[int]([1, 2, 3])
+mana_cost = 22.0
+damage_range = Vector2i(4, 8)
+critical_damage_range = Vector2i(10, 15)
+spell_range = 22.0
+critical_max_time = 0.28

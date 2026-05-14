@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://resources/scripts/weapon_data.gd" id="1_weapon"]
+
+[resource]
+script = ExtResource("1_weapon")
+weapon_name = "Simple Staff"
+weapon_kind = "Staff"
+attack_damage_range = Vector2i(2, 5)
+critical_attack_damage_range = Vector2i(6, 10)
+magic_range = 18.0
+texture_path = ""

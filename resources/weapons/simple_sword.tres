@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://resources/scripts/weapon_data.gd" id="1_weapon"]
+
+[resource]
+script = ExtResource("1_weapon")
+weapon_name = "Simple Sword"
+weapon_kind = "Sword"
+attack_damage_range = Vector2i(2, 5)
+critical_attack_damage_range = Vector2i(6, 10)
+texture_path = "res://assets/weapons/knight_texture.png"

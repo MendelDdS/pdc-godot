@@ -2,6 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://b3yxp8nmtcyi" path="res://scenes/components/health_component.tscn" id="1_g3nra"]
 [ext_resource type="Script" uid="uid://cj1haeprxtrx2" path="res://scenes/actors/enemies/enemy.gd" id="1_tiqlc"]
+[ext_resource type="Resource" path="res://resources/enemies/common_enemy.tres" id="3_enemy_data"]
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_gejs6"]
 
@@ -17,6 +18,7 @@ albedo_color = Color(1, 0, 0, 1)
 [node name="Enemy" type="CharacterBody3D" unique_id=996212000]
 collision_layer = 2
 script = ExtResource("1_tiqlc")
+enemy_data = ExtResource("3_enemy_data")
 
 [node name="HealthComponent" parent="." unique_id=1503925823 instance=ExtResource("1_g3nra")]
 max_health = 25

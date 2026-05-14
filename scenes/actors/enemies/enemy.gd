@@ -3,6 +3,7 @@ class_name Enemy
 
 enum State { IDLE, CHASE, ATTACK, STUNNED, DEAD }
 
+@export var enemy_data: EnemyData
 @export var attack_damage: int = 5
 @export var attack_windup: float = 0.35
 @export var attack_cooldown: float = 1.0
@@ -45,6 +46,7 @@ var defense_timer: float = 0.0
 var predicted_sword_guards: Array[int] = []
 
 func _ready() -> void:
+	_apply_enemy_data()
 	add_to_group("enemies")
 	health_component.entity_died.connect(_enemy_died)
 	health_component.damage_taken.connect(_on_damage_taken)
@@ -55,6 +57,23 @@ func _ready() -> void:
 	base_global_position = global_position
 	base_body_position = body.position
 	base_body_rotation_degrees = body.rotation_degrees
+
+func _apply_enemy_data() -> void:
+	if enemy_data == null:
+		return
+
+	attack_damage = enemy_data.attack_damage
+	attack_windup = enemy_data.attack_windup
+	attack_cooldown = enemy_data.attack_cooldown
+	stun_duration = enemy_data.stun_duration
+	vision_range_tiles = enemy_data.vision_range_tiles
+	move_duration = enemy_data.move_duration
+	predicted_sword_block_chance = enemy_data.predicted_sword_block_chance
+	unpredicted_sword_block_chance = enemy_data.unpredicted_sword_block_chance
+	magic_dodge_chance = enemy_data.magic_dodge_chance
+	critical_magic_dodge_chance = enemy_data.critical_magic_dodge_chance
+	if health_component != null:
+		health_component.max_health = enemy_data.max_health
 
 func _physics_process(delta: float) -> void:
 	if state == State.DEAD:
@@ -319,7 +338,7 @@ func show_damage_number(amount: int, critical: bool = false) -> void:
 	label.global_position = start_pos
 	label.scale = Vector3.ONE * (1.25 if critical else 1.0)
 
-	var tween := create_tween()
+	var tween := label.create_tween()
 	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tween.tween_property(label, "global_position", start_pos + Vector3(0.0, 1.05 if critical else 0.82, 0.0), 0.56)
 	tween.parallel().tween_property(label, "scale", Vector3.ONE * 0.9, 0.56)
@@ -403,7 +422,7 @@ func _show_block_text() -> void:
 	var origin := label.global_position
 	label.scale = Vector3.ONE * 1.08
 
-	var tween := create_tween()
+	var tween := label.create_tween()
 	tween.set_trans(Tween.TRANS_LINEAR).set_ease(Tween.EASE_IN_OUT)
 	for i in 20:
 		var offset := Vector3(0.0, randf_range(-0.08, 0.08), randf_range(-0.1, 0.1))
@@ -438,7 +457,7 @@ func _show_miss_text() -> void:
 	var peak := origin + lateral * 0.32 + Vector3(0.0, 0.62, 0.0)
 	var end := origin + lateral * 1.05 + Vector3(0.0, -0.22, 0.0)
 
-	var tween := create_tween()
+	var tween := label.create_tween()
 	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tween.tween_method(func(progress: float) -> void:
 		label.global_position = _quadratic_bezier(origin, peak, end, progress)
@@ -453,7 +472,7 @@ func _show_stunned_text() -> void:
 	_face_label_to_camera(label)
 	label.position += Vector3(0.0, 0.12, 0.0)
 
-	var tween := create_tween()
+	var tween := label.create_tween()
 	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	for i in 3:
 		tween.tween_property(label, "rotation:z", deg_to_rad(25.0), 0.09)

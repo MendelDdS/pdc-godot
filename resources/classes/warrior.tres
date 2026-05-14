@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ClassData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://resources/scripts/class_data.gd" id="1_class"]
+[ext_resource type="PackedScene" path="res://scenes/actors/items/weapons/simple_sword.tscn" id="2_weapon"]
+
+[resource]
+script = ExtResource("1_class")
+display_name = "Warrior"
+class_kind = "Warrior"
+starting_weapon_scene = ExtResource("2_weapon")
+strength = 12
+dexterity = 10
+vigor = 12
+intelligence = 8

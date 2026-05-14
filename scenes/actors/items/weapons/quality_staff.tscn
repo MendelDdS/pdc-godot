@@ -2,9 +2,11 @@
 
 [ext_resource type="PackedScene" uid="uid://bjruuv55yataa" path="res://assets/weapons/quality_staff.gltf" id="1_lslqd"]
 [ext_resource type="Script" uid="uid://csb17m6npbl6g" path="res://scenes/actors/items/weapons/sword_params.gd" id="2_staff_params"]
+[ext_resource type="Resource" path="res://resources/weapons/quality_staff.tres" id="3_weapon_data"]
 
 [node name="quality_staff" unique_id=1304813432 instance=ExtResource("1_lslqd")]
 script = ExtResource("2_staff_params")
+weapon_data = ExtResource("3_weapon_data")
 weapon_name = "Quality Staff"
 weapon_kind = "Staff"
 attack_damage_range = Vector2i(4, 7)

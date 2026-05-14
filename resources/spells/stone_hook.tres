@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="SpellData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://resources/scripts/spell_data.gd" id="1_spell"]
+
+[resource]
+script = ExtResource("1_spell")
+spell_name = "Stone Hook"
+pattern = Array[int]([4, 0, 3])
+mana_cost = 26.0
+damage_range = Vector2i(6, 9)
+critical_damage_range = Vector2i(13, 18)
+spell_range = 16.0
+critical_max_time = 0.32

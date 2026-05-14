@@ -1,6 +1,7 @@
 extends Node3D
 class_name Weapon
 
+@export var weapon_data: WeaponData
 @export var weapon_name: String = "Simple Sword"
 @export_enum("Sword", "Staff") var weapon_kind: String = "Sword"
 @export var attack_damage_range: Vector2i = Vector2i(2, 5)
@@ -16,6 +17,7 @@ var pickup_origin_y: float = 0.0
 var pickup_time: float = 0.0
 
 func _ready() -> void:
+	_apply_weapon_data()
 	set_pickup_enabled(is_pickup)
 	var mesh_instance := _find_first_mesh_instance(self)
 	if mesh_instance == null:
@@ -57,22 +59,41 @@ func get_weapon_scene() -> PackedScene:
 	return load(scene_file_path) as PackedScene
 
 func roll_attack_damage() -> int:
+	if weapon_data != null:
+		return weapon_data.roll_attack_damage()
 	return randi_range(attack_damage_range.x, attack_damage_range.y)
 
 func roll_critical_attack_damage() -> int:
+	if weapon_data != null:
+		return weapon_data.roll_critical_attack_damage()
 	return randi_range(critical_attack_damage_range.x, critical_attack_damage_range.y)
 
 func get_magic_range() -> float:
+	if weapon_data != null:
+		return weapon_data.magic_range
 	return magic_range
 
 func get_weapon_kind() -> String:
+	if weapon_data != null:
+		return weapon_data.weapon_kind
 	return weapon_kind
 
 func is_sword() -> bool:
-	return weapon_kind == "Sword"
+	return get_weapon_kind() == "Sword"
 
 func is_staff() -> bool:
-	return weapon_kind == "Staff"
+	return get_weapon_kind() == "Staff"
+
+func _apply_weapon_data() -> void:
+	if weapon_data == null:
+		return
+
+	weapon_name = weapon_data.weapon_name
+	weapon_kind = weapon_data.weapon_kind
+	attack_damage_range = weapon_data.attack_damage_range
+	critical_attack_damage_range = weapon_data.critical_attack_damage_range
+	magic_range = weapon_data.magic_range
+	texture_path = weapon_data.texture_path
 
 func _find_first_mesh_instance(node: Node) -> MeshInstance3D:
 	if node is MeshInstance3D:
