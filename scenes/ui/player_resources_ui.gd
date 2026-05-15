@@ -4,6 +4,8 @@ class_name PlayerResourcesUI
 @onready var health_bar: ProgressBar = $Root/Bars/HealthBar
 @onready var stamina_bar: ProgressBar = $Root/Bars/StaminaBar
 @onready var mana_bar: ProgressBar = $Root/Bars/ManaBar
+@onready var level_label: Label = $Root/Bars/LevelLabel
+@onready var xp_bar: ProgressBar = $Root/Bars/XPBar
 
 var _bar_tweens: Dictionary = {}
 var _last_values: Dictionary = {}
@@ -21,8 +23,28 @@ func set_stamina(value: float, max_value: float) -> void:
 func set_mana(value: float, max_value: float) -> void:
 	_set_bar(mana_bar, value, max_value, Color(0.55, 0.9, 1.0), Color(0.75, 0.85, 1.0))
 
+func set_level(value: int) -> void:
+	level_label.text = "Level %s" % value
+
+func set_experience(value: int, max_value: int) -> void:
+	_set_bar(xp_bar, float(value), float(max_value), Color(0.95, 0.72, 0.25), Color(1.0, 0.88, 0.35))
+
 func flash_stamina_denied() -> void:
 	_flash_bar(stamina_bar, Color(1.0, 0.25, 0.12), 1.12)
+
+func flash_level_up() -> void:
+	_flash_bar(xp_bar, Color(1.0, 0.9, 0.35), 1.1)
+	if _bar_tweens.has(level_label) and _bar_tweens[level_label]:
+		_bar_tweens[level_label].kill()
+
+	level_label.pivot_offset = level_label.size * 0.5
+	level_label.modulate = Color(1.0, 0.9, 0.35, 1.0)
+	level_label.scale = Vector2(1.2, 1.2)
+	var tween := create_tween()
+	_bar_tweens[level_label] = tween
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(level_label, "scale", Vector2.ONE, 0.22)
+	tween.parallel().tween_property(level_label, "modulate", Color.WHITE, 0.22)
 
 func flash_mana_denied() -> void:
 	_flash_bar(mana_bar, Color(0.75, 0.3, 1.0), 1.12)

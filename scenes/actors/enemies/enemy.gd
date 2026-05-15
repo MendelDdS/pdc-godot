@@ -4,6 +4,7 @@ class_name Enemy
 enum State { IDLE, CHASE, ATTACK, STUNNED, DEAD }
 
 @export var enemy_data: EnemyData
+@export var xp_reward: int = 25
 @export var attack_damage: int = 5
 @export var attack_windup: float = 0.35
 @export var attack_cooldown: float = 1.0
@@ -62,6 +63,7 @@ func _apply_enemy_data() -> void:
 	if enemy_data == null:
 		return
 
+	xp_reward = enemy_data.xp_reward
 	attack_damage = enemy_data.attack_damage
 	attack_windup = enemy_data.attack_windup
 	attack_cooldown = enemy_data.attack_cooldown
@@ -656,4 +658,6 @@ func _find_player_in(node: Node) -> Player:
 
 func _enemy_died() -> void:
 	state = State.DEAD
+	if player != null and is_instance_valid(player) and player.has_method("add_experience"):
+		player.add_experience(xp_reward)
 	queue_free()

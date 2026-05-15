@@ -6,6 +6,7 @@
 script = ExtResource("1_enemy")
 enemy_name = "Common Enemy"
 max_health = 100
+xp_reward = 25
 attack_damage = 5
 attack_windup = 0.35
 attack_cooldown = 1.0

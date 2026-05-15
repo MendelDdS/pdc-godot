@@ -21,6 +21,13 @@ const DEFAULT_MAGE_SPELLS: Array[SpellData] = [
 
 @export_group("Progression")
 @export var level: int = 1
+@export var experience: int = 0
+@export var experience_to_next_level: int = 100
+@export var experience_to_next_level_growth: float = 1.35
+@export var level_up_strength_gain: int = 1
+@export var level_up_dexterity_gain: int = 1
+@export var level_up_vigor_gain: int = 1
+@export var level_up_intelligence_gain: int = 1
 
 @export_group("Primary Stats")
 @export var strength: int = BASE_STAT_VALUE
@@ -269,6 +276,10 @@ func _update_resources_ui() -> void:
 	resources_ui.set_health(health_component.current_health, health_component.max_health)
 	resources_ui.set_stamina(stamina, max_stamina)
 	resources_ui.set_mana(mana, max_mana)
+	if resources_ui.has_method("set_level"):
+		resources_ui.set_level(level)
+	if resources_ui.has_method("set_experience"):
+		resources_ui.set_experience(experience, experience_to_next_level)
 
 func _can_defend() -> bool:
 	return not _is_using_sword() or stamina > 0.0
@@ -323,7 +334,29 @@ func apply_level_up(
 	vigor += max(0, vigor_gain)
 	intelligence += max(0, intelligence_gain)
 	_recalculate_stats(true)
+	if resources_ui != null and resources_ui.has_method("flash_level_up"):
+		resources_ui.flash_level_up()
 	print("Level up! Level: ", level, " STR: ", strength, " DEX: ", dexterity, " VIG: ", vigor, " INT: ", intelligence)
+
+func add_experience(amount: int) -> void:
+	if amount <= 0:
+		return
+
+	experience += amount
+	print("XP +", amount, " (", experience, "/", experience_to_next_level, ")")
+	while experience >= experience_to_next_level:
+		experience -= experience_to_next_level
+		experience_to_next_level = max(1, roundi(experience_to_next_level * experience_to_next_level_growth))
+		_apply_automatic_level_up()
+	_update_resources_ui()
+
+func _apply_automatic_level_up() -> void:
+	apply_level_up(
+		level_up_strength_gain,
+		level_up_dexterity_gain,
+		level_up_vigor_gain,
+		level_up_intelligence_gain
+	)
 
 func _recalculate_stats(fill_resources: bool = false) -> void:
 	var stamina_percent := 1.0 if max_stamina <= 0.0 else stamina / max_stamina

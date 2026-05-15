@@ -30,6 +30,13 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xp"]
+bg_color = Color(0.84, 0.58, 0.13, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
 [node name="PlayerResourcesUI" type="CanvasLayer"]
 script = ExtResource("1_resources")
 
@@ -39,7 +46,7 @@ anchors_preset = 0
 offset_left = 24.0
 offset_top = 24.0
 offset_right = 264.0
-offset_bottom = 96.0
+offset_bottom = 126.0
 
 [node name="Bars" type="VBoxContainer" parent="Root"]
 layout_mode = 1
@@ -48,7 +55,24 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
+
+[node name="LevelLabel" type="Label" parent="Root/Bars"]
+custom_minimum_size = Vector2(240, 18)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.85)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+text = "Level 1"
+
+[node name="XPBar" type="ProgressBar" parent="Root/Bars"]
+custom_minimum_size = Vector2(240, 10)
+layout_mode = 2
+show_percentage = false
+theme_override_styles/background = SubResource("StyleBoxFlat_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_xp")
+max_value = 100.0
 
 [node name="HealthBar" type="ProgressBar" parent="Root/Bars"]
 custom_minimum_size = Vector2(240, 18)
