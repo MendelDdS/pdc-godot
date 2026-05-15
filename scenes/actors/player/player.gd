@@ -17,7 +17,10 @@ const DEFAULT_MAGE_SPELLS: Array[SpellData] = [
 @export var player_class: PlayerClass = PlayerClass.MAGE
 @export var warrior_starting_weapon_scene: PackedScene
 @export var mage_starting_weapon_scene: PackedScene
-@export var mage_spells: Array[SpellData] = []
+
+@export_group("Mage Spells")
+@export var known_spells: Array[SpellData] = []
+@export var equipped_spells: Array[SpellData] = []
 
 @export_group("Progression")
 @export var level: int = 1
@@ -131,6 +134,7 @@ func _ready() -> void:
 
 	combat_ui.direction_changed.connect(_on_combat_direction_changed)
 	_apply_class_data()
+	_initialize_spells()
 	_recalculate_stats()
 	stamina = max_stamina
 	mana = max_mana
@@ -321,6 +325,49 @@ func _apply_class_data() -> void:
 			mage_starting_weapon_scene = class_data.starting_weapon_scene
 		else:
 			warrior_starting_weapon_scene = class_data.starting_weapon_scene
+
+func _initialize_spells() -> void:
+	if known_spells.is_empty():
+		known_spells = DEFAULT_MAGE_SPELLS.duplicate()
+	else:
+		for spell in equipped_spells:
+			if spell != null and not known_spells.has(spell):
+				known_spells.append(spell)
+
+	if equipped_spells.is_empty():
+		equipped_spells = known_spells.duplicate()
+
+func learn_spell(spell: SpellData, equip_now: bool = false) -> bool:
+	if spell == null or known_spells.has(spell):
+		return false
+
+	known_spells.append(spell)
+	if equip_now:
+		equip_spell(spell)
+	return true
+
+func equip_spell(spell: SpellData) -> bool:
+	if spell == null or not known_spells.has(spell) or equipped_spells.has(spell):
+		return false
+
+	equipped_spells.append(spell)
+	_apply_player_combat_stats()
+	return true
+
+func unequip_spell(spell: SpellData) -> bool:
+	if spell == null or not equipped_spells.has(spell):
+		return false
+
+	equipped_spells.erase(spell)
+	_apply_player_combat_stats()
+	return true
+
+func set_equipped_spells(spells: Array[SpellData]) -> void:
+	equipped_spells.clear()
+	for spell in spells:
+		if spell != null and known_spells.has(spell) and not equipped_spells.has(spell):
+			equipped_spells.append(spell)
+	_apply_player_combat_stats()
 
 func apply_level_up(
 	strength_gain: int = 0,
@@ -653,7 +700,7 @@ func _apply_player_combat_stats() -> void:
 	if _get_current_weapon_kind() == "Sword" and "attack_speed_rate" in active_weapon_combat:
 		active_weapon_combat.attack_speed_rate = sword_attack_speed_rate
 	if _get_current_weapon_kind() == "Staff" and active_weapon_combat.has_method("set_spells"):
-		active_weapon_combat.set_spells(mage_spells if not mage_spells.is_empty() else DEFAULT_MAGE_SPELLS)
+		active_weapon_combat.set_spells(equipped_spells if not equipped_spells.is_empty() else DEFAULT_MAGE_SPELLS)
 
 func _get_current_weapon_kind() -> String:
 	if current_weapon != null and current_weapon.has_method("get_weapon_kind"):
